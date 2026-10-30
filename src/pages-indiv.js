@@ -92,7 +92,16 @@ function cAssess(c){
   const as = Logic.assessmentsOf(c.id).reverse();
   return `<section class="card"><h2>評估紀錄 <span class="sp"></span><a class="btn primary sm" href="#/assess/new/${c.id}">${icon('plus', 14)}${as.length ? '再評估' : '進行評估'}</a></h2>
     ${as.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>日期</th><th>類別</th><th>評估者</th><th>巴氏</th><th>TUG</th><th>30秒坐站</th><th>握力</th><th>需復能問題</th><th>輸出</th></tr></thead><tbody>${as.map(a => `<tr><td><a href="#/assess/${a.id}">${rocDate(a.date)}</a></td><td>${badge(a.type)}</td><td>${esc(a.assessor || '')}</td><td>${scoreBarthel(a)?.total ?? '—'}</td><td>${a.phy?.tug || '—'}</td><td>${a.phy?.cs30 ?? '—'}</td><td>${a.phy?.grip || '—'}</td><td><small>${esc((a.problems || []).map(p => p.text).join('、').slice(0, 60))}</small></td><td class="nowrap">${exportBar('as_' + a.id, () => assessDoc(Store.get('assessments', a.id), c), ['pdf', 'word'])}</td></tr>`).join('')}</tbody></table></div>` : empty('尚無評估紀錄')}</section>
+  ${copmCompare(c)}
   ${as.length > 1 ? `<section class="card"><h2>巴氏量表變化</h2>${lineChart(Logic.assessmentsOf(c.id).map(a => ({ x:a.date, y:scoreBarthel(a)?.partial ? null : scoreBarthel(a)?.total })), { min:0, max:100 })}</section>` : ''}`;
+}
+function copmCompare(c){
+  const as = Logic.assessmentsOf(c.id).filter(a => copmRows(a).length); if (!as.length) return '';
+  const cur = as.at(-1), pre = as.length > 1 ? as.at(-2) : null;
+  const d = (n, o) => n !== '' && n != null && o !== '' && o != null ? (+n - +o >= 2 ? badge('+' + (+n - +o) + ' 有意義進步', 'green') : badge((+n - +o >= 0 ? '+' : '') + (+n - +o), +n < +o ? 'amber' : '')) : '';
+  return `<section class="card"><h2>最想做到的事 <small>${pre ? `${rocDate(pre.date)} → ${rocDate(cur.date)}` : rocDate(cur.date)}｜自評 1–10</small></h2><div class="tbl-wrap"><table class="tbl"><thead><tr><th>想做到的事</th><th>重要性</th><th>表現</th><th>滿意度</th>${pre ? '<th>表現變化</th><th>滿意度變化</th>' : ''}</tr></thead><tbody>
+  ${copmRows(cur).map(x => { const o = pre && copmRows(pre).find(y => y.activity === x.activity); return `<tr><td><b>${esc(x.activity)}</b> <small class="muted">${esc(x.area || '')}</small></td><td>${x.imp ?? ''}</td><td>${o ? `${o.perf ?? '—'} → ` : ''}<b>${x.perf ?? '—'}</b></td><td>${o ? `${o.sat ?? '—'} → ` : ''}<b>${x.sat ?? '—'}</b></td>${pre ? `<td>${o ? d(x.perf, o.perf) : badge('新增')}</td><td>${o ? d(x.sat, o.sat) : ''}</td>` : ''}</tr>`; }).join('')}
+  </tbody></table></div>${(cur.goalReview || []).length ? `<h3>前次計畫目標達成（GAS）</h3><ul class="list">${cur.goalReview.map(g => `<li>${esc(g.text)}：${badge((GAS.find(x => x[0] === +g.gas) || ['', '未評'])[1], +g.gas >= 0 && g.gas !== '' ? 'green' : 'amber')} ${esc(g.note || '')}</li>`).join('')}</ul>` : ''}</section>`;
 }
 function planView(p){
   return `${(p.goals || []).length ? `<p><b>目標：</b>${p.goals.map((g, i) => `${i + 1}. ${esc(g.text)}`).join('　')}</p>` : ''}
@@ -142,30 +151,72 @@ function cExport(c){
 
 /* ---------------- 評估 ---------------- */
 function pageAssessEdit(id, cid){
-  let a;
+  let a, carried = null;
   if (id) a = clone(Store.get('assessments', id) || {});
-  else { const prev = Logic.lastAssessment(cid); a = { clientId:cid, date:todayISO(), type:prev ? '再評' : '初評', assessor:App.currentUserId(), role:prev?.role || '', adl:{}, iadl:{}, spmsq:{ items:Array(10).fill(''), edu:prev?.spmsq?.edu || '' }, phy:{}, pain:{}, physio:prev?.physio || '', strength:prev?.strength || '', expect:prev?.expect || '', problemSel:{}, customProblems:'', summary:'' }; }
+  else {
+    const prev = Logic.lastAssessment(cid);
+    a = { clientId:cid, date:todayISO(), type:prev ? '再評' : '初評', assessor:App.currentUserId(), role:prev?.role || '', adl:{}, iadl:{}, spmsq:{ items:Array(10).fill(''), edu:'' }, phy:{}, pain:{}, physio:'', strength:'', expect:'', problemSel:{}, customProblems:'', summary:'' };
+    if (prev) {
+      // 再評：帶入上一次評估（初評或前次再評）內容，只改有變化的部分；體能測試與自評分數需重新施測
+      Object.assign(a, { adl:clone(prev.adl || {}), iadl:clone(prev.iadl || {}), spmsq:clone(prev.spmsq || { items:Array(10).fill(''), edu:'' }), pain:clone(prev.pain || {}), physio:prev.physio || '', strength:prev.strength || '', expect:prev.expect || '', phy:{ note:prev.phy?.note || '' } });
+      carried = prev;
+    }
+    a.copm = prev && copmRows(prev).length ? copmRows(prev).map(x => ({ activity:x.activity, area:x.area || '', imp:x.imp ?? '', perf:'', sat:'' })) : [{}, {}, {}];
+    const pl = activePlan(cid); if (pl && prev) a.goalReview = (pl.goals || []).filter(g => g.text).map(g => ({ goalId:g.id, planId:pl.id, text:g.text, measure:g.measure || '', baseline:g.baseline || '', target:g.target || '', current:'', gas:'', note:'' }));
+  }
+  if (!a.copm) a.copm = [{}, {}, {}];
   const c = Store.get('clients', a.clientId); if (!c) { App.go('#/clients'); return ''; }
   S.edit = a;
-  const prev = Logic.assessmentsOf(c.id).filter(x => x.id !== a.id && x.date <= a.date).at(-1), pv = v => prev ? `<span class="prev">前次：${v ?? '—'}</span>` : '';
-  setTitle((id ? '' : '新增') + '評估', c.name);
-  S.onEdit = p => { liveSum(c); if (/^(adl|iadl|phy|spmsq|pain)/.test(p)) { clearTimeout(S._t); S._t = setTimeout(() => { const el = $('#sugg'); if (el) el.innerHTML = suggHTML(c); }, 250); } };
-  setTimeout(() => liveSum(c), 0);
+  const prev = Logic.assessmentsOf(c.id).filter(x => x.id !== a.id && x.date <= a.date).at(-1);
+  S._ac = { c, prev, id, carried };
+  setTitle((id ? '' : '新增') + (a.type || '') + '評估', c.name);
+  S.onEdit = p => { liveSum(c); if (/^copm/.test(p)) copmAvgUpdate(); if (/^(adl|iadl|phy|spmsq|pain|copm)/.test(p)) { clearTimeout(S._t); S._t = setTimeout(() => { const el = $('#sugg'); if (el) el.innerHTML = suggHTML(c); }, 250); } };
+  return pageAssessBody();
+}
+function pageAssessBody(){ setTimeout(() => liveSum(S._ac.c), 0); return assessForm(); }
+function carryPhy(){ const pr = S._ac.prev; if (!pr) return; S.edit.phy = { ...clone(pr.phy || {}), note:(S.edit.phy?.note || pr.phy?.note || '') }; S.dirty = true; rerender(pageAssessBody); toast('已帶入前次體能數值，請記得在說明註明「未重測」'); }
+function assessForm(){
+  const a = S.edit, { c, prev, id, carried } = S._ac;
+  const pv = (v, cur) => prev ? `<span class="prev ${cur !== undefined && String(cur ?? '') !== String(v ?? '') ? 'chg' : ''}">前次：${v ?? '—'}</span>` : '';
   const sec = (t, body, o = '') => `<section class="card"><h2>${t}${o ? ` <small>${o}</small>` : ''}</h2>${body}</section>`;
-  const opt = (t, body, o) => `<details class="card opt"><summary><h2>${t} <small>${o}</small></h2></summary>${body}</details>`;
+  const opt = (t, body, o, open) => `<details class="card opt" ${open ? 'open' : ''}><summary><h2>${t} <small>${o}</small></h2></summary>${body}</details>`;
+  const hasPain = a.pain?.nrs !== '' && a.pain?.nrs != null || !!(a.pain?.site || a.physio || a.strength || a.expect);
+  const hasIadl = Object.values(a.iadl || {}).some(v => v !== '' && v != null), hasSp = (a.spmsq?.items || []).some(Boolean);
   const ph = (k, l, u, h) => F.field(`${l}（${u}）`, F.num('phy.' + k, { min:0 }) + pv(prev?.phy?.[k]), { hint:h });
   return `<div class="toolbar sticky-bar"><a class="btn" href="#/client/${c.id}">${icon('back', 16)}${esc(c.name)}</a><span class="sp"></span>
     ${id ? btn('刪除', `if(askConfirm('確定刪除此評估？')){Store.remove('assessments','${id}');S.dirty=false;App.go('#/client/${c.id}')}`, { k:'danger ghost', i:'trash' }) : ''}${btn('儲存', 'saveAssess(false)')}${btn('儲存並開立介入計畫', 'saveAssess(true)', { k:'primary', i:'rx' })}</div>
   <div class="edit-layout"><div class="edit-main">
+    ${carried ? `<div class="notice carry">已帶入 <b>${rocDate(carried.date)} ${esc(carried.type)}</b> 的內容：最想做到的事、巴氏量表、IADL、認知、疼痛與現況。<b>請只修改有變化的項目。</b>體能測試與自評分數需重新施測，前次數值顯示在旁（橘色＝本次已修改）。</div>` : ''}
     ${sec('基本', `<div class="form-grid g3">${F.field('評估日期', F.date('date'), { req:true })}${F.field('類別', F.select('type', ['初評', '再評', '不定期'], { blank:false }))}${F.field('評估者', F.input('assessor'), { req:true })}${F.field('職類', F.select('role', PRO_ROLES))}</div>`)}
-    ${sec('日常生活功能｜巴氏量表', BARTHEL.map(it => `<div class="q"><div class="qh"><b>${it.n}</b>${pv(prev?.adl?.[it.k])}</div>${F.radios('adl.' + it.k, it.opts.map(([s, d]) => [s, `${s} 分｜${d}`]), { t:'num', cls:'vert' })}</div>`).join(''))}
-    ${sec('體能與跌倒風險', `<div class="form-grid g3">${ph('tug', 'TUG 起身行走', '秒', '≥13.5 秒跌倒高風險')}${ph('cs30', '30秒坐站', '次', c.birth ? `同齡平均下限 ${cs30Cut(ageAt(c.birth, a.date), c.gender)} 次` : '填出生日期可比對常模')}${ph('grip', '握力', '公斤', '男<28、女<18')}${ph('oneLeg', '單腳站立', '秒', '<5 秒跌倒風險')}${ph('gait4', '4公尺步行', '秒', '自動換算步速')}${F.field('使用輔具／無法施測說明', F.input('phy.note'))}</div>`)}
-    ${opt('工具性日常生活 IADL', IADL.map(it => `<div class="q"><div class="qh"><b>${it.n}</b></div>${F.radios('iadl.' + it.k, it.opts.map(([d, s], i) => [i, `${d}（${s}）`]), { t:'num', cls:'vert' })}</div>`).join(''), '選填，日照較常使用')}
-    ${opt('認知 SPMSQ', `${F.field('教育程度', F.radios('spmsq.edu', EDU_OPTS))}<table class="tbl qa"><tbody>${SPMSQ.map((q, i) => `<tr><td>${i + 1}. ${q}</td><td>${F.radios('spmsq.items.' + i, [['c', '正確'], ['x', '錯誤']])}</td></tr>`).join('')}</tbody></table>`, '選填')}
-    ${sec('疼痛與現況', `<div class="form-grid">${F.field('疼痛 0–10', F.radios('pain.nrs', [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => [n, String(n)]), { t:'num' }), { cls:'span2' })}${F.field('疼痛部位', F.input('pain.site'))}<div></div>
-      ${F.field('身體與生活現況', F.text('physio', { rows:2 }), { cls:'span2' })}${F.field('優勢與興趣', F.text('strength', { rows:2, ph:'例：喜歡唱歌、以前是農夫（可作為團體安排參考）' }))}${F.field(`${term()}／家屬期待`, F.text('expect', { rows:2, ph:'例：想自己走去廁所' }))}</div>`)}
+    ${sec('① 最想做到的事 <small>以長輩為中心（參考 COPM）</small>', copmHTML(prev))}
+    ${(a.goalReview || []).length ? sec('② 前次計畫目標達成（GAS）', gasHTML(), '再評估時評定，作為修正計畫依據') : ''}
+    ${sec('日常生活功能｜巴氏量表', BARTHEL.map(it => `<div class="q"><div class="qh"><b>${it.n}</b>${pv(prev?.adl?.[it.k], a.adl?.[it.k])}</div>${F.radios('adl.' + it.k, it.opts.map(([s, d]) => [s, `${s} 分｜${d}`]), { t:'num', cls:'vert' })}</div>`).join(''))}
+    ${sec('體能與跌倒風險', `<div class="form-grid g3">${ph('tug', 'TUG 起身行走', '秒', '≥13.5 秒跌倒高風險')}${ph('cs30', '30秒坐站', '次', c.birth ? `同齡平均下限 ${cs30Cut(ageAt(c.birth, a.date), c.gender)} 次` : '填出生日期可比對常模')}${ph('grip', '握力', '公斤', '男<28、女<18')}${ph('oneLeg', '單腳站立', '秒', '<5 秒跌倒風險')}${ph('tandem', '前後腳站立', '秒', '腳跟貼腳尖站，測到 10 秒即停；<10 秒平衡不佳（SPPB）')}${ph('gait4', '4公尺步行', '秒', '自動換算步速')}${F.field('使用輔具／無法施測說明', F.input('phy.note'))}</div>${prev && Object.keys(prev.phy || {}).some(k => k !== 'note' && prev.phy[k] !== '' && prev.phy[k] != null) ? `<p class="hint">本次無法重測時：${btn('帶入前次體能數值', 'carryPhy()', { k:'sm' })}</p>` : ''}`)}
+    ${opt('工具性日常生活 IADL', IADL.map(it => `<div class="q"><div class="qh"><b>${it.n}</b>${prev?.iadl?.[it.k] != null && prev.iadl[it.k] !== '' ? pv(it.opts[prev.iadl[it.k]]?.[0], it.opts[a.iadl?.[it.k]]?.[0]) : ''}</div>${F.radios('iadl.' + it.k, it.opts.map(([d, s], i) => [i, `${d}（${s}）`]), { t:'num', cls:'vert' })}</div>`).join(''), '選填，日照較常使用', hasIadl)}
+    ${opt('認知 SPMSQ', `${F.field('教育程度', F.radios('spmsq.edu', EDU_OPTS))}<table class="tbl qa"><tbody>${SPMSQ.map((q, i) => `<tr><td>${i + 1}. ${q}</td><td>${F.radios('spmsq.items.' + i, [['c', '正確'], ['x', '錯誤']])}</td></tr>`).join('')}</tbody></table>`, '選填', hasSp)}
+    ${opt('疼痛與現況', `<div class="form-grid">${F.field(`疼痛 0–10　<a href="javascript:void(0)" onclick="S.edit.pain.nrs='';document.querySelectorAll('input[name=\\'pain.nrs\\']').forEach(r=>r.checked=false);S.dirty=true;liveSum(Store.get('clients',S.edit.clientId))">清除</a>`, F.radios('pain.nrs', [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => [n, String(n)]), { t:'num' }), { cls:'span2' })}${F.field('疼痛部位', F.input('pain.site'))}<div></div>
+      ${F.field('身體與生活現況', F.text('physio', { rows:2 }), { cls:'span2' })}${F.field('優勢與興趣', F.text('strength', { rows:2, ph:'例：喜歡唱歌、以前是農夫（可作為團體安排參考）' }))}${F.field(`${term()}／家屬期待`, F.text('expect', { rows:2, ph:'例：想自己走去廁所' }))}</div>`, '選填', hasPain)}
     ${sec('評估結果：需復能的問題', `<p class="hint">依評估結果自動建議；勾選的問題會帶入介入計畫，並附上建議的個別項目、團體與輔具。</p><div id="sugg">${suggHTML(c)}</div>${F.field('其他問題（每行一項）', F.text('customProblems', { rows:2 }))}${F.field('評估摘要', F.text('summary', { rows:2 }))}`)}
   </div><aside class="edit-side"><div class="card sticky" id="live"></div></aside></div>`;
+}
+function copmHTML(prev){
+  const a = S.edit, pr = act => prev ? copmRows(prev).find(x => x.activity === act) : null;
+  return `<div class="notice">先問長輩：「現在有哪些日常的事，是您<b>想要自己做、需要做或別人期待您做</b>，但<b>做不到或做得不滿意</b>的？」再請長輩挑出<b>最重要的 1–5 件</b>。</div>
+  <details class="more"><summary>訪談提示：三大領域與常見例子（點例子可直接加入）</summary>${COPM_AREAS.map(([ar, d, ex]) => `<div class="copm-area"><b>${ar}</b><small>${d}</small><div class="pills">${ex.map(e => `<button type="button" class="chip" onclick="copmAdd('${e}','${ar}')">${icon('plus', 12)}${e}</button>`).join('')}</div></div>`).join('')}</details>
+  <div class="tbl-wrap"><table class="tbl copm"><thead><tr><th>#</th><th>想做到的事（用長輩自己的話）</th><th>領域</th><th>重要性<br><small>1–10</small></th><th>目前表現<br><small>1–10</small></th><th>滿意度<br><small>1–10</small></th><th></th></tr></thead><tbody>
+  ${a.copm.map((x, i) => { const q = pr(x.activity); return `<tr><td>${i + 1}</td><td>${F.input(`copm.${i}.activity`, { ph:i ? '' : '例：自己走去市場買菜' })}</td><td>${F.select(`copm.${i}.area`, COPM_AREAS.map(r => r[0]))}</td><td>${F.num(`copm.${i}.imp`, { min:1, max:10, cls:'w5' })}</td><td>${F.num(`copm.${i}.perf`, { min:1, max:10, cls:'w5' })}${q && q.perf !== '' && q.perf != null ? `<span class="prev">前次 ${q.perf}</span>` : ''}</td><td>${F.num(`copm.${i}.sat`, { min:1, max:10, cls:'w5' })}${q && q.sat !== '' && q.sat != null ? `<span class="prev">前次 ${q.sat}</span>` : ''}</td><td>${btn('✕', `S.edit.copm.splice(${i},1);rerender(()=>pageAssessBody())`, { k:'sm ghost' })}</td></tr>`; }).join('')}
+  </tbody></table></div>${a.copm.length < 5 ? btn('新增一列', 'S.edit.copm.push({});rerender(()=>pageAssessBody())', { k:'sm', i:'plus' }) : ''}
+  <p class="hint" id="copm-avg">${copmAvgText(prev)}</p>
+  <p class="hint">分數由長輩自評（1＝完全做不到／非常不滿意，10＝做得很好／非常滿意）。中重度失智無法自評者可只填「想做到的事」。再評估時表現或滿意度進步 ≥2 分即具臨床意義。</p>`;
+}
+function copmAvgText(prev){ const p = copmAvg(S.edit, 'perf'), s = copmAvg(S.edit, 'sat'), pp = prev ? copmAvg(prev, 'perf') : null, ps = prev ? copmAvg(prev, 'sat') : null;
+  const d = (n, o) => n != null && o != null ? `（前次 ${o}，${n - o >= 0 ? '+' : ''}${Math.round((n - o) * 10) / 10}${n - o >= 2 ? '，具臨床意義進步' : ''}）` : '';
+  return `平均表現 <b>${p ?? '—'}</b>${d(p, pp)}　平均滿意度 <b>${s ?? '—'}</b>${d(s, ps)}`; }
+function copmAvgUpdate(){ const el = $('#copm-avg'); if (el) el.innerHTML = copmAvgText(Logic.assessmentsOf(S.edit.clientId).filter(x => x.id !== S.edit.id && x.date <= S.edit.date).at(-1)); }
+function copmAdd(act, area){ const rows = S.edit.copm, empty = rows.find(x => !x.activity); if (empty) Object.assign(empty, { activity:act, area }); else if (rows.length < 5) rows.push({ activity:act, area }); else return toast('最多 5 件，請先刪除一列', 'err'); S.dirty = true; rerender(() => pageAssessBody()); }
+function gasHTML(){
+  return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>計畫目標</th><th>目前 → 目標值</th><th>本次現況</th><th>GAS 達成度</th><th>說明</th></tr></thead><tbody>${S.edit.goalReview.map((g, i) => `<tr><td>${esc(g.text)}<br><small class="muted">${esc(g.measure)}</small></td><td>${esc(g.baseline)} → ${esc(g.target)}</td><td>${F.input(`goalReview.${i}.current`, { cls:'w6' })}</td><td>${F.select(`goalReview.${i}.gas`, GAS, { t:'num' })}</td><td>${F.input(`goalReview.${i}.note`)}</td></tr>`).join('')}</tbody></table></div>
+  <p class="hint">GAS（目標達成量表）：0 分＝剛好達成目標；負分＝未達成；正分＝超越目標。</p>`;
 }
 function suggHTML(c){
   const sg = suggestFromAssessment(S.edit, c);
@@ -177,7 +228,7 @@ function liveSum(c){
   const a = S.edit, el = $('#live'); if (!el || !a) return;
   const b = scoreBarthel(a), i = scoreIADL(a), s = scoreSPMSQ(a), p = a.phy || {}, ag = ageAt(c.birth, a.date), gs = gaitSpeed(a);
   const r = (k, v, f) => `<div class="ls ${f ? 'flag' : ''}"><span>${k}</span><b>${v}</b></div>`;
-  el.innerHTML = `<h3>即時計分</h3>${r('巴氏', b ? `${b.total} <small>${b.level}</small>` : '—', b && !b.partial && b.total < 91)}${r('TUG', p.tug ? p.tug + ' 秒' : '—', +p.tug >= PHY_CUT.tug)}${r('30秒坐站', p.cs30 !== '' && p.cs30 != null ? p.cs30 + ' 次' : '—', ag && p.cs30 !== '' && p.cs30 != null && +p.cs30 < cs30Cut(ag, c.gender))}${r('握力', p.grip ? p.grip + ' kg' : '—', p.grip && +p.grip < (c.gender === '男' ? PHY_CUT.gripM : PHY_CUT.gripF))}${r('單腳站', p.oneLeg ? p.oneLeg + ' 秒' : '—', p.oneLeg !== '' && p.oneLeg != null && +p.oneLeg < PHY_CUT.oneLeg)}${r('步速', gs != null ? gs + ' m/s' : '—', gs != null && gs < PHY_CUT.gait)}${r('IADL', i ? i.total + '/8' : '—')}${r('SPMSQ', s ? (s.partial ? '未完成' : `錯 ${s.errors}`) : '—', s && s.adj >= 3)}<p class="hint">紅字＝需注意，最終判斷由專業人員決定。</p>`;
+  el.innerHTML = `<h3>即時計分</h3>${r('巴氏', b ? `${b.total} <small>${b.level}</small>` : '—', b && !b.partial && b.total < 91)}${r('TUG', p.tug ? p.tug + ' 秒' : '—', +p.tug >= PHY_CUT.tug)}${r('30秒坐站', p.cs30 !== '' && p.cs30 != null ? p.cs30 + ' 次' : '—', ag && p.cs30 !== '' && p.cs30 != null && +p.cs30 < cs30Cut(ag, c.gender))}${r('握力', p.grip ? p.grip + ' kg' : '—', p.grip && +p.grip < (c.gender === '男' ? PHY_CUT.gripM : PHY_CUT.gripF))}${r('單腳站', p.oneLeg ? p.oneLeg + ' 秒' : '—', p.oneLeg !== '' && p.oneLeg != null && +p.oneLeg < PHY_CUT.oneLeg)}${r('前後腳站', p.tandem !== '' && p.tandem != null ? p.tandem + ' 秒' : '—', p.tandem !== '' && p.tandem != null && +p.tandem < PHY_CUT.tandem)}${r('步速', gs != null ? gs + ' m/s' : '—', gs != null && gs < PHY_CUT.gait)}${r('IADL', i ? i.total + '/8' : '—')}${r('SPMSQ', s ? (s.partial ? '未完成' : `錯 ${s.errors}`) : '—', s && s.adj >= 3)}<p class="hint">紅字＝需注意，最終判斷由專業人員決定。</p>`;
 }
 function saveAssess(toPlan){
   const a = S.edit, c = Store.get('clients', a.clientId);
@@ -203,12 +254,18 @@ function pagePlanEdit(id, cid, params){
       problems:from ? probs.map(x => x.text) : [...(base?.problems || [])], goals:clone(base?.goals || []), items:clone(base?.items || []),
       groups:clone(base?.groups || []), devices:[...new Set([...(base?.devices || []), ...probs.flatMap(x => x.dev || [])])], note:base?.note || '' };
     if (!base) [...new Set(probs.flatMap(x => x.grp || []))].forEach(t => p.groups.push({ type:t, freq:'', note:'' }));
-    if (!p.goals.length) p.goals.push({ id:Store.newId() });
+    const cp = from ? copmRows(from).slice().sort((x, y) => (+y.imp || 0) - (+x.imp || 0)) : [];
+    const perfTxt = x => x.perf !== '' && x.perf != null ? `自評表現 ${x.perf}/10` : '';
+    if (!base) p.goals = cp.slice(0, 3).map(x => newGoal({ activity:x.activity, baseline:perfTxt(x) }));
+    else cp.forEach(x => { const g = p.goals.find(g => (g.activity || g.text) === x.activity); if (g && perfTxt(x)) g.baseline = perfTxt(x); });
+    if (!p.goals.length) p.goals.push(newGoal());
     p._sug = [...new Set(probs.flatMap(x => x.ex || []))];
   }
   const c = Store.get('clients', p.clientId); if (!c) { App.go('#/clients'); return ''; }
   if (id && p.status !== '執行中') { setTitle('介入計畫 v' + p.version, c.name); return `<div class="toolbar"><a class="btn" href="#/client/${c.id}/plan">${icon('back', 16)}${esc(c.name)}</a><span class="sp"></span>${exportBar('pv_' + p.id, () => planDoc(Store.get('plans', p.id)))}</div><div class="notice">此版本已結束，僅供檢視與輸出。</div><section class="card">${planView(p)}</section>`; }
+  p.goals.forEach(g => { if (g.activity == null && g.text) g.activity = g.text; });
   S.edit = p; setTitle((id ? '編輯' : '開立') + '復能介入計畫 v' + p.version, c.name);
+  S.onEdit = path => { const m = path.match(/^goals\.(\d+)\./); if (m) { const g = S.edit.goals[+m[1]]; g.text = composeGoal(g); const el = $('#gp-' + m[1]); if (el) el.textContent = g.text || '（填寫上方欄位後自動組成目標）'; } };
   return planHTML();
 }
 function planHTML(){
@@ -219,9 +276,9 @@ function planHTML(){
     ${p.id ? btn('結束此計畫', 'endPlan()', { k:'danger ghost' }) : ''}${btn(p.id ? '儲存' : '儲存並開始執行', 'savePlan()', { k:'primary', i:'check' })}</div>
   <section class="card"><h2>計畫資訊</h2><div class="form-grid g3">${F.field('開始日期', F.date('startDate'), { req:true })}${F.field('結束日期', F.date('endDate'), { req:true, hint:'建議 8–12 週後再評估' })}${F.field('擬定者', F.input('author'), { req:true })}${F.field('職類', F.select('role', PRO_ROLES))}</div></section>
   <section class="card"><h2>需復能的問題與目標</h2>${p.problems.map((x, i) => `<div class="row-edit">${F.input('problems.' + i)}${btn('✕', `S.edit.problems.splice(${i},1);rerender(planHTML)`, { k:'sm ghost' })}</div>`).join('')}${btn('新增問題', `S.edit.problems.push('');rerender(planHTML)`, { k:'sm', i:'plus' })}
-    <h3>目標</h3><div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>目標（具體、可量測）</th><th>評量方式</th><th>目前</th><th>目標值</th><th></th></tr></thead><tbody>
-    ${p.goals.map((g, i) => `<tr><td>${i + 1}</td><td>${F.input(`goals.${i}.text`, { ph:'例：12週內可在監督下自行由輪椅移位到椅子' })}</td><td>${F.input(`goals.${i}.measure`, { ph:'例：30秒坐站' })}</td><td>${F.input(`goals.${i}.baseline`, { cls:'w6' })}</td><td>${F.input(`goals.${i}.target`, { cls:'w6' })}</td><td>${btn('✕', `S.edit.goals.splice(${i},1);rerender(planHTML)`, { k:'sm ghost' })}</td></tr>`).join('')}
-    </tbody></table></div>${btn('新增目標', `S.edit.goals.push({id:Store.newId()});rerender(planHTML)`, { k:'sm', i:'plus' })}</section>
+    <h3>復能目標 <small class="muted">以「最想做到的事」為目標，寫出：多久內＋用什麼方式／輔具＋協助程度＋在真實生活中做什麼（從哪裡到哪裡）＋怎麼算達成</small></h3>
+    ${p.goals.map((g, i) => goalCard(g, i)).join('')}
+    ${btn('新增目標', `S.edit.goals.push(newGoal());rerender(planHTML)`, { k:'sm', i:'plus' })}</section>
   <section class="card"><h2>個別介入 <small>運動、日常生活訓練｜會出現在今日勾選與檢核表</small><span class="sp"></span>${btn('從項目庫挑選', 'openPicker()', { k:'primary sm', i:'plus' })}</h2>
     ${sug.length ? `<div class="notice">評估建議：${sug.map(e => `<button type="button" class="chip hl" onclick="addItem('${e}')">${icon('plus', 14)}${esc(findItem(e)?.name || e)}</button>`).join('')} <button type="button" class="chip" onclick="(S.edit._sug||[]).forEach(e=>S.edit.items.some(it=>it.exId===e)||S.edit.items.push(mkItem(e)));S.dirty=true;rerender(planHTML)">全部加入</button></div>` : ''}
     <div class="items-edit">${p.items.map((it, i) => `<div class="item-card"><div class="ic-h">${thumb(it.img)}<b>${i + 1}.</b>${F.input(`items.${i}.name`, { cls:'grow' })}${F.select(`items.${i}.type`, ['運動', '日常生活訓練', '其他'], { blank:false })}${btn('✕', `S.edit.items.splice(${i},1);rerender(planHTML)`, { k:'sm ghost', title:'移除' })}</div>
@@ -237,6 +294,37 @@ function planHTML(){
     <div class="pills">${[...new Set([...sugDev, ...(S.allDev ? Object.keys(DEVICES) : [])])].map(d => `<label class="pill" title="${esc(DEVICES[d]?.s || '')}"><input type="checkbox" ${p.devices.includes(d) ? 'checked' : ''} onchange="toggleDev('${esc(d)}',this.checked)"><span>${sugDev.includes(d) ? '★ ' : ''}${esc(d)}</span></label>`).join('')}</div>
     <p class="hint">★＝依本次評估建議。滑鼠停在項目上可看說明。 <a href="javascript:void(0)" onclick="S.allDev=!S.allDev;rerender(planHTML)">${S.allDev ? '只顯示建議項目' : `顯示全部 ${Object.keys(DEVICES).length} 項常用輔具`}</a></p></section>
   <section class="card"><h2>備註</h2>${F.text('note', { rows:2, ph:'例：居家延續建議、轉介、特別注意' })}</section>`;
+}
+/* ---------- 復能目標（五要素：時限、方式／輔具、協助程度、活動情境、可測量） ---------- */
+const GOAL_WHEN = ['4 週內', '8 週內', '12 週內', '3 個月內', '6 個月內'];
+const GOAL_ASSIST = ['可獨立', '在旁人監督下（不需碰觸）', '在口頭提示下', '在少量協助下', '在中度協助下'];
+const SCENES = [
+  ['移動', /走|移動|散步|客廳|房間/, ['從臥室床邊走到客廳沙發', '從客廳走到廁所', '從房間走到餐桌吃飯']],
+  ['移位', /移位|輪椅|床上|起床|坐起/, ['從床上坐起並移到輪椅', '從輪椅移到馬桶', '從輪椅移到餐桌椅子']],
+  ['如廁', /廁|尿|便/, ['自己走進廁所、穿脫褲子並完成如廁', '夜間自己下床使用床邊便盆椅']],
+  ['洗澡', /洗澡|沐浴/, ['坐在洗澡椅上自己洗身體前面與手臂', '自己跨過浴室門檻進出浴室']],
+  ['進食', /吃|飯|進食/, ['自己吃完一餐碗裡的食物', '自己拿杯子喝完一杯水']],
+  ['穿衣', /穿|衣|鞋|襪/, ['坐在床邊自己穿上衣與褲子', '自己穿脫鞋子']],
+  ['外出', /外出|出門|市場|公園|散步|廟|教會|買/, ['從家門口走到巷口便利商店', '從家門口走到社區據點', '自己走到公園繞一圈']],
+  ['樓梯', /樓梯|上樓|下樓/, ['扶扶手上下家門口的 3 階樓梯', '自己上下一層樓梯回家']],
+  ['家務', /煮|菜|洗衣|晾|掃|家務/, ['站在流理台前洗菜、切菜 10 分鐘', '把洗好的衣服晾到陽台衣架上']],
+];
+const MEASURE_CHIPS = ['每天 2 次', '中途不休息', '3 次中有 2 次成功', '10 分鐘內完成', '連續 1 週都做到'];
+function newGoal(o = {}){ const g = { id:Store.newId(), activity:'', when:'12 週內', how:'', assist:'在旁人監督下（不需碰觸）', scene:'', measure:'', baseline:'', ...o }; g.text = composeGoal(g); return g; }
+function composeGoal(g){
+  const act = (g.scene || g.activity || '').trim();
+  const parts = [g.when, (g.how || '').trim(), act ? (g.assist || '') + act : '', (g.measure || '').trim()].filter(Boolean);
+  g.target = (g.measure || '').trim();
+  return act ? parts.join('，') + '。' : '';
+}
+function goalCard(g, i){
+  const hit = SCENES.filter(([, re]) => re.test(g.activity || '')), list = hit.length ? hit : SCENES.slice(0, 3);
+  return `<div class="item-card goal-card"><div class="ic-h"><b>目標 ${i + 1}</b><span class="lbl">想做到的事</span>${F.input(`goals.${i}.activity`, { cls:'grow', ph:'例：自己走到客廳看電視' })}${btn('✕', `S.edit.goals.splice(${i},1);rerender(planHTML)`, { k:'sm ghost', title:'移除' })}</div>
+    <div class="form-grid g3">${F.field('① 時限', F.select(`goals.${i}.when`, GOAL_WHEN, { blank:false }))}${F.field('② 方式／輔具', F.input(`goals.${i}.how`, { ph:'例：使用助行器、扶著牆邊扶手' }))}${F.field('③ 協助程度', F.select(`goals.${i}.assist`, GOAL_ASSIST, { blank:false }))}
+      ${F.field('④ 在真實生活中做什麼（從哪裡到哪裡）', F.input(`goals.${i}.scene`, { ph:'例：從臥室床邊走到客廳沙發' }) + `<div class="pills sm">${list.flatMap(([, , ex]) => ex).map(e => `<button type="button" class="chip" onclick="S.edit.goals[${i}].scene='${e}';S.edit.goals[${i}].text=composeGoal(S.edit.goals[${i}]);S.dirty=true;rerender(planHTML)">${e}</button>`).join('')}</div>`, { cls:'span2' })}
+      ${F.field('⑤ 怎麼算達成（可測量）', F.input(`goals.${i}.measure`, { ph:'例：每天 2 次、中途不休息' }) + `<div class="pills sm">${MEASURE_CHIPS.map(e => `<button type="button" class="chip" onclick="const g=S.edit.goals[${i}];g.measure=g.measure?g.measure+'、${e}':'${e}';g.text=composeGoal(g);S.dirty=true;rerender(planHTML)">${e}</button>`).join('')}</div>`)}
+      ${F.field('目前狀況', F.input(`goals.${i}.baseline`, { ph:'例：需家人扶著，走到一半要休息' }), { cls:'span2' })}</div>
+    <div class="goal-preview"><span class="lbl">目標句</span><span id="gp-${i}">${esc(g.text || '（填寫上方欄位後自動組成目標）')}</span></div></div>`;
 }
 function toggleGroup(t, on){ const g = S.edit.groups; if (on && !g.some(x => x.type === t)) g.push({ type:t, freq:'', note:'' }); if (!on) S.edit.groups = g.filter(x => x.type !== t); S.dirty = true; rerender(planHTML); }
 function toggleDev(d, on){ S.edit.devices = on ? [...new Set([...S.edit.devices, d])] : S.edit.devices.filter(x => x !== d); S.dirty = true; }
@@ -257,10 +345,10 @@ function refreshPicker(){ const el = $('#picker'); if (!el) return; const q = do
 function savePlan(){
   const p = S.edit, err = [];
   if (!p.author?.trim()) err.push('請填寫擬定者'); if (!p.startDate || !p.endDate || p.endDate <= p.startDate) err.push('請確認計畫期間');
-  p.goals = p.goals.filter(g => g.text?.trim()); p.problems = p.problems.filter(x => x?.trim());
+  p.goals.forEach(g => { if (g.when != null) g.text = composeGoal(g); }); p.goals = p.goals.filter(g => g.text?.trim()); p.problems = p.problems.filter(x => x?.trim());
   if (!p.items.length && !p.groups.length) err.push('請至少加入一個個別項目或團體');
   p.items.forEach((it, i) => { if (!it.name?.trim()) err.push(`第${i + 1}項未填名稱`); if (!(it.days || []).length) err.push(`「${it.name || i + 1}」未勾選執行日`); });
-  if (err.length) { if (!p.goals.length) p.goals.push({ id:Store.newId() }); rerender(planHTML); return toast(err.join('；'), 'err'); }
+  if (err.length) { if (!p.goals.length) p.goals.push(newGoal()); rerender(planHTML); return toast(err.join('；'), 'err'); }
   const isNew = !p.id; delete p._sug;
   if (isNew) { Logic.plansOf(p.clientId).filter(x => x.status === '執行中').forEach(x => { x.status = '已結束'; if (x.endDate >= p.startDate) x.endDate = addDays(p.startDate, -1); Store.upsert('plans', x); }); p.status = '執行中'; }
   Store.upsert('plans', p); S.dirty = false; toast(isNew ? `計畫 v${p.version} 開始執行` : '已儲存'); App.go('#/client/' + p.clientId + '/plan');

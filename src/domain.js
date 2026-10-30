@@ -66,13 +66,31 @@ function mnaLevel(t){ if(t==null) return ''; if(t>=12) return '營養狀況正�
 // 30秒坐站：低於此次數＝低於同齡平均（Rikli & Jones；CDC STEADI）
 const CS30_NORM = { M:[[60,14],[65,12],[70,12],[75,11],[80,10],[85,8],[90,7]], F:[[60,12],[65,11],[70,10],[75,10],[80,9],[85,8],[90,4]] };
 function cs30Cut(age, sex){ const t=CS30_NORM[sex==='男'?'M':'F']; let c=t[0][1]; for(const [a,v] of t){ if(age>=a) c=v; } return c; }
-const PHY_CUT = { tug:13.5, gripM:28, gripF:18, gait:1.0, oneLeg:5, cs5:12 }; // TUG≥13.5s 跌倒風險；AWGS 2019 肌少症切點
+const PHY_CUT = { tandem:10, tug:13.5, gripM:28, gripF:18, gait:1.0, oneLeg:5, cs5:12 }; // TUG≥13.5s 跌倒風險；AWGS 2019 肌少症切點
+
+/* ---------- 最想做到的事（參考 COPM：加拿大職能表現測量） ---------- */
+const COPM_AREAS = [
+  ['自我照顧', '個人照顧（穿衣、洗澡、進食、如廁）、功能性移動（移位、室內外走動）、社區生活（交通、購物、理財）', ['自己上廁所', '自己洗澡', '自己穿衣服', '自己吃飯', '自己從床上起來', '自己走到客廳／餐廳', '自己出門搭車', '自己去市場買菜']],
+  ['生產活動', '家務（煮飯、打掃、洗衣）、工作／志工、照顧家人或寵物', ['煮一道拿手菜', '自己洗衣服、晾衣服', '掃地整理房間', '幫忙照顧孫子', '照顧寵物', '去當志工']],
+  ['休閒', '靜態休閒（閱讀、手作、看電視）、動態休閒（散步、運動、旅遊）、社交（拜訪親友、宗教活動、聚會）', ['去公園散步', '去廟裡拜拜／上教會', '和朋友聊天、打麻將', '種花種菜', '唱歌', '寫書法、畫畫', '和家人出去旅遊']],
+];
+const COPM_KW = [
+  [/廁|尿|便/, ['toilet-transfer', 'adl_toilet']], [/洗澡|沐浴|洗頭/, ['shower-step-entry']], [/穿|衣服|鞋|襪|鈕/, ['adl_dress', 'button-board']],
+  [/吃|飯|進食|筷|湯匙/, ['adl_feed', 'spoon-scoop']], [/起床|翻身|坐起|床上/, ['bed-rolling', 'supine-to-sit']],
+  [/走|散步|市場|出門|公園|逛|旅遊|搭車/, ['forward-walking-line', 'walking-program', 'sit-to-stand']], [/樓梯|上樓|爬/, ['step-up', 'stair-descent-practice']],
+  [/煮|菜|廚|料理/, ['kitchen-task-sequence', 'counter-reaching-standing']], [/洗衣|晾|摺|掃|整理|家務/, ['cloth-folding', 'laundry-basket-lift']],
+  [/拜拜|廟|教會|朋友|麻將|聚會|聊天/, [], ['社交團體']], [/唱歌|音樂/, [], ['音樂團體']], [/書法|畫|手工|編織/, ['peg-transfer', 'grip-towel'], ['藝術團體', '手工藝團體']], [/種|園藝|花/, ['grip-towel'], ['園藝團體']],
+];
+const copmRows = a => (a?.copm || []).filter(x => x.activity && String(x.activity).trim());
+const copmAvg = (a, k) => { const v = copmRows(a).map(x => x[k]).filter(x => x !== '' && x != null).map(Number); return v.length ? Math.round(v.reduce((s, x) => s + x, 0) / v.length * 10) / 10 : null; };
 
 /* ---------- 評估結果 → 問題、建議介入、輔具、團體 ---------- */
 const GROUP_TYPES = ['運動團體','認知團體','懷舊團體','社交團體','手工藝團體','藝術團體','音樂團體','園藝團體'];
 function suggestFromAssessment(a, client){
   const out=[]; if(!a) return out;
   const add=(code,text,ex,dev,grp,ref)=>{ if(!out.find(o=>o.code===code)) out.push({code,text,ex:ex||[],dev:dev||[],grp:grp||[],referral:ref||''}); };
+  copmRows(a).slice().sort((x,y)=>(+y.imp||0)-(+x.imp||0)).forEach((c,ix)=>{ const ex=[],grp=[]; COPM_KW.forEach(([re,e,g])=>{ if(re.test(c.activity)){ ex.push(...e); grp.push(...(g||[])); } });
+    add('copm'+ix,'最想做到：'+c.activity+(c.perf!==''&&c.perf!=null?`（目前表現 ${c.perf}/10）`:''),[...new Set(ex)],[],[...new Set(grp)]); });
   const b=a.adl||{}, has=k=>b[k]!==''&&b[k]!=null;
   if(has('transfer')&&+b.transfer<15) add('transfer','移位能力受限（巴氏移位 '+b.transfer+' 分）',['sit-to-stand','sit-pivot-transfer'],['移位腰帶與人力移位吊帶','移位滑板','床邊扶手與起身拉繩']);
   if(has('mobility')&&+b.mobility<15) add('mobility','平地行走能力受限（巴氏走動 '+b.mobility+' 分）',['forward-walking-line','standing-weight-shift','adl_walkmeal'],+b.mobility<=5?['手動輪椅（一般型）','前輪助行器']:['四腳拐','前輪助行器','四輪助步車'],['運動團體']);
@@ -84,7 +102,7 @@ function suggestFromAssessment(a, client){
   if(has('grooming')&&+b.grooming<5) add('grooming','個人衛生需協助',['adl_groom','reaching-cup']);
   if((has('bladder')&&+b.bladder<10)||(has('bowel')&&+b.bowel<10)) add('contin','排泄控制問題',['adl_toiletschedule'],['便盆椅','床上便盆與尿壺'],[],'護理人員評估排泄問題');
   const p=a.phy||{}, ag=client?ageAt(client.birth,a.date):null, v=k=>p[k]!==''&&p[k]!=null;
-  if((v('tug')&&+p.tug>=PHY_CUT.tug)||(v('oneLeg')&&+p.oneLeg<PHY_CUT.oneLeg)) add('fall','跌倒高風險（TUG／單腳站未達標）',['single-leg-stance-supported','tandem-stance','standing-weight-shift','sit-to-stand'],['防滑措施','感應夜燈與大面板開關','髖部保護褲'],['運動團體']);
+  if((v('tug')&&+p.tug>=PHY_CUT.tug)||(v('oneLeg')&&+p.oneLeg<PHY_CUT.oneLeg)||(v('tandem')&&+p.tandem<PHY_CUT.tandem)) add('fall','跌倒高風險（TUG／單腳站／前後腳站未達標）',['single-leg-stance-supported','tandem-stance','standing-weight-shift','sit-to-stand'],['防滑措施','感應夜燈與大面板開關','髖部保護褲'],['運動團體']);
   if((v('cs30')&&ag&&+p.cs30<cs30Cut(ag,client.gender))||(v('cs5')&&+p.cs5>=PHY_CUT.cs5)) add('legstr','下肢肌力不足（坐站測試低於同齡常模）',['sit-to-stand','long-arc-quad','heel-raise','hip-abduction-standing'],[],['運動團體']);
   if(v('grip')&&client&&+p.grip<(client.gender==='男'?PHY_CUT.gripM:PHY_CUT.gripF)) add('grip','握力不足（AWGS 肌少症切點以下）',['grip-towel','pinch-clip','theraband-row'],[],['手工藝團體'],'營養評估（蛋白質攝取）');
   if(v('gait4')&&+p.gait4>0&&4/(+p.gait4)<PHY_CUT.gait) add('gait','步行速度慢（<1.0 m/s）',['walking-program','forward-walking-line']);
@@ -108,4 +126,4 @@ function gaitSpeed(a){ const s=+a?.phy?.gait4; return s>0?Math.round(4/s*100)/10
 function ageAt(birth, iso){ if(!birth) return null; const b=new Date(birth+'T00:00:00'), d=iso?new Date(iso+'T00:00:00'):new Date(); let y=d.getFullYear()-b.getFullYear(); if(d.getMonth()<b.getMonth()||(d.getMonth()===b.getMonth()&&d.getDate()<b.getDate())) y--; return y; }
 
 /* 目標達成量表 GAS */
-const GAS = [[-2,'-2 退步／遠低於預期'],[-1,'-1 未達預期（維持基準）'],[0,'0 達成預期目標'],[1,'+1 略優於預期'],[2,'+2 遠優於預期']];
+const GAS = [[-2,'-2 比原本退步'],[-1,'-1 有進步但未達目標'],[0,'0 達成預期目標'],[1,'+1 略優於目標'],[2,'+2 遠超過目標']];

@@ -307,3 +307,14 @@ details.more{margin-top:4px}details.more summary{cursor:pointer;color:var(--pri-
   .d-meta{color:#4f7356;font-weight:600}.d-warn{color:#a2402f}
   .d-cimg{width:100%;max-height:30mm;object-fit:cover;display:block}
 }
+.prev.chg{background:#f3dcc4;color:#8a4b14;font-weight:600}
+.notice.carry{background:#f2ead8;border-left:4px solid var(--accent)}
+.copm-area{padding:6px 0;border-top:1px dashed var(--line)}.copm-area small{display:block;color:var(--muted)}
+.inp.w5{max-width:76px}
+table.copm td{vertical-align:middle}
+.goal-card .ic-h .lbl{white-space:nowrap}
+.goal-preview{margin-top:8px;padding:10px 12px;background:var(--pri-l);border-radius:10px;font-size:15px;display:flex;gap:10px;align-items:baseline}
+.goal-preview .lbl{white-space:nowrap;color:var(--pri-d)}
+.pills.sm{margin-top:4px}.pills.sm .chip{font-size:13px;padding:3px 10px}
+table.copm td{white-space:nowrap}table.copm td .prev{margin-left:6px;font-size:12px}
+table.copm td:nth-child(2){min-width:220px;white-space:normal}
