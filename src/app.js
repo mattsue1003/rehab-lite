@@ -2,7 +2,7 @@
    App：外框、路由、首頁、設定
    ================================================================ */
 const APP_TITLE = '復能計畫與執行檢核';
-const NAV = [['#/', 'home', '首頁'], ['#/clients', 'users', '個別復能'], ['#/groups', 'star', '團體復能'], ['#/library', 'clip', '復能項目庫'], ['#/settings', 'gear', '設定與備份']];
+const NAV = [['#/', 'home', '首頁'], ['#/today', 'check', '今日勾選'], ['#/clients', 'users', '個案名冊'], ['#/library', 'clip', '復能項目庫'], ['#/settings', 'gear', '設定與備份']];
 const App = {
   currentUserId(){ try { return localStorage.getItem('rehabl:who') || ''; } catch(e){ return ''; } },
   setWho(v){ try { localStorage.setItem('rehabl:who', v.trim()); } catch(e){} toast('記錄者：' + (v.trim() || '（未填）')); },
@@ -21,7 +21,7 @@ function renderShell(){
 function setTitle(t, sub = ''){ $('#top-title').innerHTML = `<b>${esc(t)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}`; document.title = t + '｜' + APP_TITLE; }
 function navActive(){
   let cur = location.hash || '#/'; try { cur = decodeURIComponent(cur); } catch(e){}
-  if (/^#\/(client|assess|plan)\b/.test(cur)) cur = '#/clients'; if (/^#\/group\b/.test(cur)) cur = '#/groups';
+  if (/^#\/(client|assess|plan)\b/.test(cur)) cur = '#/clients';
   document.querySelectorAll('#side nav a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === cur));
   document.body.classList.remove('nav-open');
 }
@@ -33,8 +33,7 @@ const ROUTES = [
   [/^#\/assess\/([^/?]+)$/, m => pageAssessEdit(m[1])],
   [/^#\/plan\/new\/([^/?]+)(?:\?(.*))?$/, m => pagePlanEdit(null, m[1], new URLSearchParams(m[2] || ''))],
   [/^#\/plan\/([^/?]+)$/, m => pagePlanEdit(m[1])],
-  [/^#\/groups$/, () => pageGroups()],
-  [/^#\/group\/([^/?]+)(?:\/(\w+))?$/, m => pageGroup(m[1], m[2] || 'plan')],
+  [/^#\/today$/, () => pageToday()],
   [/^#\/library$/, () => pageLibrary()],
   [/^#\/settings$/, () => pageSettings()],
 ];
@@ -57,30 +56,35 @@ function pageHome(){
   setTitle(APP_TITLE, rocDate(todayISO()) + '（星期' + WEEKDAYS[weekday(todayISO())] + '）');
   const m = Store.DB.meta;
   if (!m.orgType) return `<section class="card setup"><h2>開始使用：請先選擇機構類型</h2>
-    <p>系統會依類型調整用語（${'個案／住民'}）、預設執行日（日照週一至五、住宿每天）與表單欄位（住宿加上房號床號）。</p>
+    <p>系統會依類型調整用語（個案／住民）、預設執行日（日照週一至五、住宿每天）與表單欄位（住宿加上房號床號）。</p>
     <div class="field"><label class="lbl">機構名稱（會印在表單抬頭，可之後修改）</label><input class="inp" id="orgName" placeholder="例：○○日間照顧中心"></div>
     <div class="choice">${['日間照顧', '住宿機構'].map(t => `<button class="choice-b" onclick="setupOrg('${t}')"><b>${t}</b><small>${t === '日間照顧' ? '日照、小規機、家托' : '長照機構、護理之家、養護/安養機構'}</small></button>`).join('')}</div>
     <p class="hint">想先看看操作方式？選完類型後可到「設定與備份」載入示範資料。</p></section>`;
-  const cs = Store.all('clients').filter(c => c.status !== '結案'), act = cs.filter(c => activePlan(c.id));
-  const today = todayISO(), gs = Store.all('groups').filter(g => g.status !== '結束');
-  const todayGs = gs.filter(g => (g.days || []).includes(weekday(today)) && g.startDate <= today && g.endDate >= today);
+  const today = todayISO(), cs = Store.all('clients').filter(c => c.status !== '結案');
+  let tot = 0, done = 0; const noAssess = [], noPlan = [], ending = [];
+  for (const c of cs) {
+    const p = activePlan(c.id);
+    if (!Logic.lastAssessment(c.id)) noAssess.push(c); else if (!p) noPlan.push(c);
+    if (p) { if (p.endDate <= addDays(today, 14)) ending.push({ c, p }); p.items.filter(it => scheduled(p, it, today)).forEach(it => { tot++; if (curStatus(p.id, it.id, today)) done++; }); }
+  }
+  const grpCount = {}; cs.forEach(c => (activePlan(c.id)?.groups || []).forEach(g => grpCount[g.type] = (grpCount[g.type] || 0) + 1));
   const step = (n, t, d, h) => `<a class="step-c" href="${h}"><span class="sn">${n}</span><b>${t}</b><small>${d}</small></a>`;
+  const li = (c, t, h, k) => `<li><span class="tt"><a href="#/client/${c.id}"><b>${esc(c.name)}</b></a> ${isRes() && c.bed ? `<small class="muted">${esc(c.bed)}</small>` : ''} <small class="muted">${t}</small></span><a class="btn sm ${k || ''}" href="${h}">前往</a></li>`;
   return `<div class="steps4">
-    ${step(1, '評估', '巴氏、體能、IADL、認知；系統建議需復能的問題', '#/clients')}
-    ${step(2, '開立計畫', '個別復能計畫／團體復能計畫', '#/clients')}
-    ${step(3, '執行檢核', '照服員或治療師勾選 ✓ △ ✕', '#/clients')}
-    ${step(4, '輸出列印', 'Word、PPT、PDF，印出紙本勾選', '#/clients')}</div>
+    ${step(1, '評估', '巴氏、體能；系統建議問題、項目、團體與輔具', '#/clients')}
+    ${step(2, '介入計畫', '個別（運動／日常生活訓練）＋ 團體', '#/clients')}
+    ${step(3, '今日勾選', '照服員或治療師一鍵勾選 ✓ △ ✕', '#/today')}
+    ${step(4, '輸出列印', 'Word、PPT、PDF，紙本勾選', '#/clients')}</div>
   <div class="grid2">
-    <section class="card"><h2>個別復能 <small>${cs.length} 位${term()}，${act.length} 位計畫執行中</small></h2>
-      ${cs.length ? `<ul class="todo">${cs.slice(0, 8).map(c => { const p = activePlan(c.id); return `<li><span class="tt"><a href="#/client/${c.id}"><b>${esc(c.name)}</b></a> ${isRes() && c.bed ? `<small class="muted">${esc(c.bed)}</small>` : ''}</span>${p ? badge('計畫至 ' + rocDate(p.endDate), p.endDate < today ? 'red' : 'green') : badge(Logic.lastAssessment(c.id) ? '待開計畫' : '待評估', 'amber')}<a class="btn sm" href="#/client/${c.id}/check">檢核</a></li>`; }).join('')}</ul>` : empty(`尚未建立${term()}`, `<a class="btn primary" href="#/clients">新增${term()}</a>`)}
-    </section>
-    <section class="card"><h2>團體復能 <small>今天有 ${todayGs.length} 個團體</small></h2>
-      ${gs.length ? `<ul class="todo">${gs.map(g => `<li><span class="tt"><a href="#/group/${g.id}"><b>${esc(g.name)}</b></a> <small class="muted">${esc(daysText(g.days))} ${esc(g.time || '')}｜${(g.members || []).length} 人</small></span>${todayGs.includes(g) ? badge('今天', 'green') : ''}<a class="btn sm" href="#/group/${g.id}/check">檢核</a></li>`).join('')}</ul>` : empty('尚未建立團體', `<a class="btn primary" href="#/groups">建立團體</a>`)}
-    </section>
-  </div>
-  <section class="card"><h2>空白表單 <small>直接印出，手寫勾選</small></h2>
-    <div class="exp-row"><span>空白復能評估表</span>${exportBar('blankAssess', () => assessDoc(null, null), ['pdf', 'word'])}</div>
-  </section>`;
+    <section class="card"><h2>今日個別介入 <small>${rocDate(today)}</small></h2>
+      <div class="big-prog"><b>${done}</b>／${tot} 項已記錄</div><div class="bar"><i style="width:${tot ? Math.round(done / tot * 100) : 0}%"></i></div>
+      <p><a class="btn primary" href="#/today">${icon('check', 16)}開始勾選</a></p></section>
+    <section class="card"><h2>待處理</h2>
+      ${noAssess.length + noPlan.length + ending.length ? `<ul class="todo">${noAssess.map(c => li(c, '尚未評估', `#/assess/new/${c.id}`, 'primary')).join('')}${noPlan.map(c => li(c, '已評估，尚未開立介入計畫', `#/client/${c.id}/plan`, 'primary')).join('')}${ending.map(({ c, p }) => li(c, `計畫將於 ${rocDate(p.endDate)} 結束，請再評估`, `#/assess/new/${c.id}`)).join('')}</ul>` : empty('目前沒有待處理事項')}
+    </section></div>
+  <div class="grid2">
+    <section class="card"><h2>團體參與人數</h2>${Object.keys(grpCount).length ? `<div class="kpis sm">${Object.entries(grpCount).map(([t, n]) => `<div class="kpi"><div class="k-n">${n}</div><div class="k-l">${esc(t)}</div></div>`).join('')}</div>` : empty('尚無團體介入')}</section>
+    <section class="card"><h2>空白表單 <small>直接印出，手寫勾選</small></h2><div class="exp-row"><span>空白復能評估表</span>${exportBar('blankAssess', () => assessDoc(null, null), ['pdf', 'word'])}</div></section></div>`;
 }
 function setupOrg(t){ Store.setMeta('orgType', t); const n = $('#orgName')?.value.trim(); if (n) Store.setMeta('orgName', n); renderShell(); route(); toast('已設定為' + t); }
 

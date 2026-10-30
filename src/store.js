@@ -2,7 +2,7 @@
    資料層：IndexedDB（失敗時退回 localStorage），所有資料只存在本機
    每筆紀錄含 id / updatedAt / updatedBy，刪除採軟刪除，方便多台裝置合併
    ================================================================ */
-const COLLECTIONS = ['clients','assessments','plans','checks','weekNotes','groups','sessions','library'];
+const COLLECTIONS = ['clients','assessments','plans','checks','weekNotes','library'];
 
 const Store = (() => {
   const DB = { meta:{} };

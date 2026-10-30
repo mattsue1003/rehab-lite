@@ -68,80 +68,32 @@ const CS30_NORM = { M:[[60,14],[65,12],[70,12],[75,11],[80,10],[85,8],[90,7]], F
 function cs30Cut(age, sex){ const t=CS30_NORM[sex==='男'?'M':'F']; let c=t[0][1]; for(const [a,v] of t){ if(age>=a) c=v; } return c; }
 const PHY_CUT = { tug:13.5, gripM:28, gripF:18, gait:1.0, oneLeg:5, cs5:12 }; // TUG≥13.5s 跌倒風險；AWGS 2019 肌少症切點
 
-/* ---------- 復能處方庫 ---------- */
-const EX_CATS = ['暖身/緩和','肌力','平衡','耐力','關節活動','ADL自立支援','IADL','認知','口腔吞嚥','心理社會'];
-const EXERCISES = [
-  {id:'warm_breath', cat:'暖身/緩和', name:'深呼吸與肩頸放鬆', dose:'5分鐘', how:'坐姿挺胸，鼻子吸氣4秒、嘴巴吐氣6秒；配合聳肩、轉肩、左右轉頭。', caution:'動作放慢，不憋氣。', selfcare:false},
-  {id:'warm_joint', cat:'暖身/緩和', name:'坐姿關節暖身操', dose:'5分鐘', how:'由上而下依序活動：手指握放、手腕繞圈、手肘彎伸、肩膀繞圈、膝蓋伸直、腳踝上下。', caution:'關節疼痛處減小範圍。', selfcare:false},
-  {id:'cool_stretch', cat:'暖身/緩和', name:'坐姿伸展緩和', dose:'5分鐘', how:'坐姿伸展大腿後側、小腿、手臂與背部，每個動作停10–15秒，配合慢呼吸。', caution:'伸展到微緊即可，不可彈震。', selfcare:false},
-  {id:'grp_ball', cat:'肌力', name:'團體傳球／拍球', dose:'10分鐘', how:'圍圈坐，依口令傳球、拍球、舉球過頭，可加入數數或唱歌。', caution:'使用軟球；注意坐姿穩定。', selfcare:false},
-  {id:'grp_band', cat:'肌力', name:'團體彈力帶運動', dose:'每動作10下 × 2組', how:'帶領者示範：推胸、划船、側拉、腿推；長輩依能力選擇彈力帶顏色。', caution:'彈力帶勿套在手腕上，避免彈傷。', selfcare:false},
-  {id:'str_sitstand', cat:'肌力', name:'坐站訓練', dose:'10下 × 2組', how:'坐在有扶手的穩固椅子前1/2，雙腳與肩同寬、腳跟在膝蓋後方；身體前傾「鼻子超過腳尖」再站直，慢慢坐下。能力好者雙手交叉胸前。', caution:'站起時有頭暈、血壓偏高（收縮壓>180）暫停；椅子靠牆防滑。', selfcare:false},
-  {id:'str_kneeext', cat:'肌力', name:'坐姿膝伸直抬腿', dose:'每側10下 × 2組', how:'坐姿背靠椅背，一腳膝蓋慢慢伸直，腳尖朝上停3秒再放下。可綁0.5–1公斤沙包增加阻力。', caution:'膝關節疼痛加劇時降低次數或不加沙包。', selfcare:false},
-  {id:'str_heelraise', cat:'肌力', name:'扶椅墊腳尖', dose:'10下 × 2組', how:'雙手扶穩椅背，腳跟慢慢抬高停2秒再放下。', caution:'需有人在旁監督，防止後倒。', selfcare:false},
-  {id:'str_hipabd', cat:'肌力', name:'扶椅側抬腿', dose:'每側10下 × 2組', how:'扶椅背站直，一腳向側邊抬起約20公分，身體不歪斜，慢慢放下。', caution:'髖關節置換術後依治療師指示角度。', selfcare:false},
-  {id:'str_step', cat:'肌力', name:'踏階訓練', dose:'每側10下 × 2組', how:'在扶手旁使用10公分踏階，健側先上、患側先下（上樓好腳先，下樓壞腳先）。', caution:'需近身監督，必要時使用步態帶。', selfcare:false},
-  {id:'str_band_row', cat:'肌力', name:'彈力帶划船（上肢）', dose:'10下 × 2組', how:'坐姿雙手握彈力帶，手肘往後拉、夾背停2秒，慢慢回原位。', caution:'肩痛時減小範圍。', selfcare:false},
-  {id:'str_grip', cat:'肌力', name:'握力訓練（握力球/擰毛巾）', dose:'10下 × 2組', how:'用力握緊軟球5秒後放鬆；或雙手擰濕毛巾。', caution:'手部關節發炎期間暫停。', selfcare:false},
-  {id:'bal_chair_oneleg', cat:'平衡', name:'扶椅單腳站', dose:'每側10秒 × 3次', how:'雙手扶椅背，一腳抬離地面維持平衡；進步後改單手扶、再改手指輕觸。', caution:'照服員站在個案側後方保護。', selfcare:false},
-  {id:'bal_tandem', cat:'平衡', name:'前後腳站（半串聯站）', dose:'10秒 × 3次', how:'一腳腳跟靠在另一腳腳尖旁站立，雙手扶桌或椅背。', caution:'近身保護，旁邊不放雜物。', selfcare:false},
-  {id:'bal_weightshift', cat:'平衡', name:'重心轉移', dose:'左右、前後各10次', how:'站姿扶椅，身體重心慢慢移到左腳再移到右腳；再前後移動。', caution:'有明顯晃動時改為坐姿重心轉移。', selfcare:false},
-  {id:'bal_obstacle', cat:'平衡', name:'跨越障礙步行', dose:'來回 × 3趟', how:'於走廊放置2–3個低矮障礙物（如毛巾捲），練習抬腳跨越。', caution:'使用原有輔具，照服員陪走。', selfcare:false},
-  {id:'end_march', cat:'耐力', name:'坐姿/扶椅原地踏步', dose:'3–5分鐘', how:'坐姿或扶椅原地踏步，配合音樂；自覺「有點喘、還能說話」為適當強度（RPE 11–13）。', caution:'心臟病個案監測心跳與血壓。', selfcare:false},
-  {id:'end_walk', cat:'耐力', name:'走廊步行訓練', dose:'＿＿公尺 × 2趟', how:'使用原有輔具，在走廊來回步行；記錄距離與休息次數。', caution:'下肢無力者使用步態帶並近身保護。', selfcare:false},
-  {id:'end_bike', cat:'耐力', name:'腳踏車/上下肢訓練器', dose:'10分鐘', how:'低阻力開始，速度穩定。', caution:'足部需固定好；中途不適即停止。', selfcare:false},
-  {id:'rom_upper', cat:'關節活動', name:'上肢關節活動（爬牆/繞肩）', dose:'各10下', how:'手指沿牆面慢慢往上爬到最高點停3秒；肩膀前後繞圈。', caution:'偏癱側肩膀勿用力拉扯手臂。', selfcare:false},
-  {id:'rom_neck', cat:'關節活動', name:'頸部與軀幹伸展操', dose:'各5下', how:'坐姿進行點頭、轉頭、側彎、軀幹旋轉，動作緩慢配合呼吸。', caution:'頸椎疾患避免過度後仰。', selfcare:false},
-  {id:'adl_transfer', cat:'ADL自立支援', name:'移位練習（輪椅↔椅子/馬桶）', dose:'每次移位時執行', how:'以「最少必要協助」原則：先口頭提示煞車、移腳踏板、身體前傾，讓個案自己出力；照服員只在需要時給予協助。', caution:'未能負重者使用移位腰帶。', selfcare:true},
-  {id:'adl_toilet', cat:'ADL自立支援', name:'如廁步驟練習', dose:'每次如廁時執行', how:'分解步驟：走進廁所→轉身→扶扶手→自己拉下褲子→坐下→清潔→穿回褲子。只協助個案做不到的那一步。', caution:'注意地面濕滑，個案隱私。', selfcare:true},
-  {id:'adl_toiletschedule', cat:'ADL自立支援', name:'定時如廁/排泄訓練', dose:'每2小時提醒1次', how:'依排尿紀錄定時引導如廁，記錄是否成功、是否失禁。', caution:'記錄異常（血尿、灼熱）回報護理師。', selfcare:true},
-  {id:'adl_feed', cat:'ADL自立支援', name:'自行進食訓練', dose:'每餐', how:'提供合適輔具（加粗湯匙、防滑墊、有邊碗），鼓勵自己吃完，必要時只協助最後幾口。', caution:'吞嚥困難者依飲食質地與姿勢建議（坐正、下巴微收）。', selfcare:true},
-  {id:'adl_dress', cat:'ADL自立支援', name:'穿脫衣練習', dose:'每日1次（如換外套、午休前後）', how:'偏癱者「患側先穿、健側先脫」；給予口頭步驟提示，讓個案自己完成。', caution:'選擇寬鬆、前開衣物。', selfcare:true},
-  {id:'adl_groom', cat:'ADL自立支援', name:'自行盥洗（洗手/刷牙/梳頭）', dose:'每日餐後', how:'將用品擺在個案伸手可及處，提示步驟，讓個案自行完成。', caution:'', selfcare:true},
-  {id:'adl_walkmeal', cat:'ADL自立支援', name:'自行步行至用餐/活動區', dose:'每日移動時', how:'能步行者以步行取代輪椅推送，照服員陪走。', caution:'疲累時可中途休息。', selfcare:true},
-  {id:'iadl_fold', cat:'IADL', name:'摺衣服/整理物品', dose:'15分鐘', how:'摺毛巾、衣物分類、整理桌面；可擔任中心小幫手。', caution:'', selfcare:true},
-  {id:'iadl_cook', cat:'IADL', name:'備餐活動（洗菜、剝豆、切水果）', dose:'每週1–2次', how:'在團體備餐活動中負責個案能力所及的步驟。', caution:'使用刀具需監督。', selfcare:true},
-  {id:'iadl_shop', cat:'IADL', name:'模擬購物/金錢計算', dose:'20分鐘', how:'使用模擬商品與錢幣練習挑選、計算與找零。', caution:'', selfcare:true},
-  {id:'iadl_meds', cat:'IADL', name:'服藥管理練習（藥盒分裝）', dose:'每週1次', how:'在護理師指導下練習看藥袋、分裝一週藥盒、依時間服藥。', caution:'由護理師確認正確性。', selfcare:true},
-  {id:'iadl_phone', cat:'IADL', name:'電話/手機使用練習', dose:'每週1–2次', how:'練習撥打家屬電話、使用視訊。', caution:'', selfcare:true},
-  {id:'cog_ro', cat:'認知', name:'現實導向', dose:'每日上午', how:'說出今天日期、星期、天氣、節日；看月曆與白板。', caution:'不糾正責備，以提示引導。', selfcare:false},
-  {id:'cog_game', cat:'認知', name:'益智活動（分類/配對/計算）', dose:'20分鐘', how:'依個案程度選擇撲克牌配對、物品分類、數字計算等。', caution:'難度以「努力一下可以完成」為原則。', selfcare:false},
-  {id:'cog_reminisce', cat:'認知', name:'懷舊/回憶活動', dose:'每週1–2次', how:'以老照片、老歌、舊物引導分享過往經驗。', caution:'留意引發負面情緒的話題。', selfcare:false},
-  {id:'oral_exercise', cat:'口腔吞嚥', name:'健口操（餐前）', dose:'每餐前5分鐘', how:'臉頰鼓氣、舌頭前伸左右、發「ㄆㄚ、ㄊㄚ、ㄎㄚ」音、唾液腺按摩。', caution:'', selfcare:false},
-  {id:'oral_swallow', cat:'口腔吞嚥', name:'吞嚥訓練（依語言治療師指示）', dose:'依處方', how:'依語言治療師指定的姿勢、食物質地與吞嚥策略執行。', caution:'出現嗆咳、聲音濕潤立即停止並回報。', selfcare:false},
-  {id:'psy_role', cat:'心理社會', name:'角色任務（擔任小幫手）', dose:'每日', how:'安排個案有意義的任務，如發點心、澆花、帶操，提升自我價值感。', caution:'', selfcare:true},
-  {id:'psy_group', cat:'心理社會', name:'鼓勵參與團體活動', dose:'每日', how:'主動邀請參加團體課程，安排座位在熟識的長輩旁。', caution:'尊重個案意願，不勉強。', selfcare:false},
-];
-
-/* ---------- 評估結果 → 問題與建議處方 ---------- */
+/* ---------- 評估結果 → 問題、建議介入、輔具、團體 ---------- */
+const GROUP_TYPES = ['運動團體','認知團體','懷舊團體','社交團體','手工藝團體','藝術團體','音樂團體','園藝團體'];
 function suggestFromAssessment(a, client){
   const out=[]; if(!a) return out;
-  const add=(code,text,ex,ref)=>{ if(!out.find(o=>o.code===code)) out.push({code,text,ex:ex||[],referral:ref||''}); };
+  const add=(code,text,ex,dev,grp,ref)=>{ if(!out.find(o=>o.code===code)) out.push({code,text,ex:ex||[],dev:dev||[],grp:grp||[],referral:ref||''}); };
   const b=a.adl||{}, has=k=>b[k]!==''&&b[k]!=null;
-  if(has('transfer')&&+b.transfer<15) add('transfer','移位能力受限（巴氏移位 '+b.transfer+' 分）',['adl_transfer','str_sitstand']);
-  if(has('mobility')&&+b.mobility<15) add('mobility','平地行走能力受限（巴氏走動 '+b.mobility+' 分）',['end_walk','bal_weightshift','adl_walkmeal']);
-  if(has('stairs')&&+b.stairs<10) add('stairs','上下樓梯能力受限',['str_step','str_heelraise']);
-  if(has('toilet')&&+b.toilet<10) add('toilet','如廁需協助',['adl_toilet']);
-  if(has('dressing')&&+b.dressing<10) add('dressing','穿脫衣需協助',['adl_dress']);
-  if(has('feeding')&&+b.feeding<10) add('feeding','進食需協助',['adl_feed','oral_exercise']);
-  if(has('grooming')&&+b.grooming<5) add('grooming','個人衛生需協助',['adl_groom']);
-  if((has('bladder')&&+b.bladder<10)||(has('bowel')&&+b.bowel<10)) add('contin','排泄控制問題',['adl_toiletschedule'],'護理師評估排泄問題');
-  const p=a.phy||{}; const ag=client?ageAt(client.birth,a.date):null;
-  if((p.tug!==''&&p.tug!=null&&+p.tug>=PHY_CUT.tug)||(p.oneLeg!==''&&p.oneLeg!=null&&+p.oneLeg<PHY_CUT.oneLeg)) add('fall','跌倒高風險（TUG/單腳站未達標）',['bal_chair_oneleg','bal_tandem','bal_weightshift','str_sitstand']);
-  if((p.cs30!==''&&p.cs30!=null&&ag&&+p.cs30<cs30Cut(ag,client.gender))||(p.cs5!==''&&p.cs5!=null&&+p.cs5>=PHY_CUT.cs5)) add('legstr','下肢肌力不足（坐站測試低於同齡常模）',['str_sitstand','str_kneeext','str_heelraise','str_hipabd']);
-  if(p.grip!==''&&p.grip!=null&&client&&+p.grip<(client.gender==='男'?PHY_CUT.gripM:PHY_CUT.gripF)) add('grip','握力不足（AWGS 肌少症切點以下）',['str_grip','str_band_row'],'營養師評估蛋白質攝取');
-  if(p.gait4!==''&&p.gait4!=null&&+p.gait4>0&&4/(+p.gait4)<PHY_CUT.gait) add('gait','步行速度慢（<1.0 m/s）',['end_walk','end_march']);
+  if(has('transfer')&&+b.transfer<15) add('transfer','移位能力受限（巴氏移位 '+b.transfer+' 分）',['sit-to-stand','sit-pivot-transfer'],['移位腰帶與人力移位吊帶','移位滑板','床邊扶手與起身拉繩']);
+  if(has('mobility')&&+b.mobility<15) add('mobility','平地行走能力受限（巴氏走動 '+b.mobility+' 分）',['forward-walking-line','standing-weight-shift','adl_walkmeal'],+b.mobility<=5?['手動輪椅（一般型）','前輪助行器']:['四腳拐','前輪助行器','四輪助步車'],['運動團體']);
+  if(has('stairs')&&+b.stairs<10) add('stairs','上下樓梯能力受限',['step-up','stair-descent-practice'],['固定式扶手']);
+  if(has('toilet')&&+b.toilet<10) add('toilet','如廁需協助',['toilet-transfer','adl_toilet'],['馬桶增高器','馬桶扶手架']);
+  if(has('bathing')&&+b.bathing<5) add('bath','洗澡需協助',['shower-step-entry'],['洗澡椅','長柄沐浴刷','防滑措施']);
+  if(has('dressing')&&+b.dressing<10) add('dressing','穿脫衣需協助',['adl_dress','button-board','zipper-practice','sock-aid-practice'],['穿襪輔助器','長柄鞋拔','扣鈕器與拉鍊環','易穿脫衣物']);
+  if(has('feeding')&&+b.feeding<10) add('feeding','進食需協助',['adl_feed','spoon-scoop','cup-to-mouth','oral_exercise'],['加粗握柄餐具','防滑餐墊','斜底碗與護緣盤','缺口杯']);
+  if(has('grooming')&&+b.grooming<5) add('grooming','個人衛生需協助',['adl_groom','reaching-cup']);
+  if((has('bladder')&&+b.bladder<10)||(has('bowel')&&+b.bowel<10)) add('contin','排泄控制問題',['adl_toiletschedule'],['便盆椅','床上便盆與尿壺'],[],'護理人員評估排泄問題');
+  const p=a.phy||{}, ag=client?ageAt(client.birth,a.date):null, v=k=>p[k]!==''&&p[k]!=null;
+  if((v('tug')&&+p.tug>=PHY_CUT.tug)||(v('oneLeg')&&+p.oneLeg<PHY_CUT.oneLeg)) add('fall','跌倒高風險（TUG／單腳站未達標）',['single-leg-stance-supported','tandem-stance','standing-weight-shift','sit-to-stand'],['防滑措施','感應夜燈與大面板開關','髖部保護褲'],['運動團體']);
+  if((v('cs30')&&ag&&+p.cs30<cs30Cut(ag,client.gender))||(v('cs5')&&+p.cs5>=PHY_CUT.cs5)) add('legstr','下肢肌力不足（坐站測試低於同齡常模）',['sit-to-stand','long-arc-quad','heel-raise','hip-abduction-standing'],[],['運動團體']);
+  if(v('grip')&&client&&+p.grip<(client.gender==='男'?PHY_CUT.gripM:PHY_CUT.gripF)) add('grip','握力不足（AWGS 肌少症切點以下）',['grip-towel','pinch-clip','theraband-row'],[],['手工藝團體'],'營養評估（蛋白質攝取）');
+  if(v('gait4')&&+p.gait4>0&&4/(+p.gait4)<PHY_CUT.gait) add('gait','步行速度慢（<1.0 m/s）',['walking-program','forward-walking-line']);
   const i=a.iadl||{}, iz=k=>i[k]!==''&&i[k]!=null&&IADL.find(x=>x.k===k).opts[+i[k]]?.[1]===0;
   if(iz('meds')) add('meds','服藥管理需協助',['iadl_meds']);
-  if(iz('shopping')||iz('finance')) add('shop','購物與金錢管理能力下降',['iadl_shop']);
-  if(iz('cooking')) add('cook','備餐能力下降',['iadl_cook']);
-  if(iz('housework')||iz('laundry')) add('house','家務能力下降',['iadl_fold']);
-  if(iz('phone')) add('phone','電話使用困難',['iadl_phone']);
-  const sp=scoreSPMSQ(a); if(sp&&sp.adj>=3) add('cog','認知功能退化（SPMSQ：'+spmsqLevel(sp.adj)+'）',['cog_ro','cog_game','cog_reminisce'], sp.adj>=5&&!client?.dementia?'建議轉介神經內科/精神科進行失智症診斷':'');
-  const g=scoreGDS(a); if(g&&g.total>=5) add('mood','疑似憂鬱情緒（GDS-15＝'+g.total+'）',['psy_role','psy_group'],'社工關懷；必要時轉介身心科');
-  const m=scoreMNA(a); if(m&&m.total<=11) add('nutri',mnaLevel(m.total)+'（MNA-SF＝'+m.total+'）',[],'轉介營養師評估');
-  if(a.pain&&+a.pain.nrs>=4) add('pain','疼痛影響活動（NRS '+a.pain.nrs+'）',['rom_upper','rom_neck'],'醫師/物理治療師評估疼痛');
-  (a.copm||[]).filter(c=>c.activity).forEach((c,ix)=>add('copm'+ix,'個案期待：'+c.activity,[]));
+  if(iz('cooking')) add('cook','備餐能力下降',['kitchen-task-sequence','counter-reaching-standing']);
+  if(iz('housework')||iz('laundry')) add('house','家務能力下降',['cloth-folding','laundry-basket-lift']);
+  const sp=scoreSPMSQ(a); if(sp&&sp.adj>=3) add('cog','認知功能退化（SPMSQ：'+spmsqLevel(sp.adj)+'）',['cog_ro'],sp.adj>=5?['防走失定位裝置']:[],['認知團體','懷舊團體'], sp.adj>=5&&!client?.dementia?'建議就醫確認失智症診斷':'');
+  if(a.pain&&+a.pain.nrs>=4) add('pain','疼痛影響活動（NRS '+a.pain.nrs+'）',['seated-posture-reset','upper-trap-stretch'],[],[],'醫師／物理治療師評估疼痛');
   return out;
 }
 
