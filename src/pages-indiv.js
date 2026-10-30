@@ -61,9 +61,9 @@ function pageClients(){
   const list = Store.all('clients').filter(c => (!cFilter.status || (c.status || '服務中') === cFilter.status) && (!cFilter.q || c.name.includes(cFilter.q) || (c.bed || '').includes(cFilter.q))).sort((a, b) => (a.bed || a.name).localeCompare(b.bed || b.name));
   return `<div class="toolbar"><input class="inp" placeholder="搜尋姓名${isRes() ? '／床號' : ''}" value="${esc(cFilter.q)}" oninput="cFilter.q=this.value;rerenderList()" aria-label="搜尋">
     <select class="inp" onchange="cFilter.status=this.value;rerenderList()" aria-label="狀態">${['服務中', '結案', ''].map(s => `<option value="${s}" ${cFilter.status === s ? 'selected' : ''}>${s || '全部'}</option>`).join('')}</select>
-    <span class="sp"></span>${btn('新增' + term(), 'editClient()', { k:'primary', i:'plus' })}</div>
-  <section class="card flush"><div class="tbl-wrap"><table class="tbl" id="ctable"><thead><tr><th>姓名</th>${isRes() ? '<th>房號／床號</th>' : ''}<th>最近評估</th><th>巴氏</th><th>介入計畫</th><th>團體</th><th>本週執行</th></tr></thead><tbody>
-  ${list.map(c => { const a = Logic.lastAssessment(c.id), p = activePlan(c.id), st = p ? planStats(p, ws, today) : null; return `<tr class="click" onclick="App.go('#/client/${c.id}')"><td><b>${esc(c.name)}</b></td>${isRes() ? `<td>${esc(c.bed || '')}</td>` : ''}<td>${a ? rocDate(a.date) + ' ' + badge(a.type) : badge('未評估', 'amber')}</td><td>${scoreBarthel(a)?.total ?? '—'}</td><td>${p ? `個別 ${(p.items || []).length} 項，至 ${rocDate(p.endDate)}` : badge('未開立', 'amber')}</td><td><small>${esc((p?.groups || []).map(g => g.type.replace('團體', '')).join('、'))}</small></td><td>${st?.exp ? `<div class="mini-bar"><i style="width:${st.rate}%"></i></div>${st.ok + st.part}/${st.exp}` : '—'}</td></tr>`; }).join('') || `<tr><td colspan="7">${empty(`尚無${term()}資料`)}</td></tr>`}
+    <span class="sp"></span>${Store.all('clients').some(c => c.demo) ? btn('清除模擬個案', 'clearDemoClients()', { k:'danger ghost', i:'trash' }) : ''}${btn('新增' + term(), 'editClient()', { k:'primary', i:'plus' })}</div>
+  <section class="card flush"><div class="tbl-wrap"><table class="tbl" id="ctable"><thead><tr><th>姓名</th>${isRes() ? '<th>房號／床號</th>' : ''}<th>最近評估</th><th>巴氏</th><th>介入計畫</th><th>團體</th><th>本週執行</th><th></th></tr></thead><tbody>
+  ${list.map(c => { const a = Logic.lastAssessment(c.id), p = activePlan(c.id), st = p ? planStats(p, ws, today) : null; return `<tr class="click" onclick="App.go('#/client/${c.id}')"><td><b>${esc(c.name)}</b></td>${isRes() ? `<td>${esc(c.bed || '')}</td>` : ''}<td>${a ? rocDate(a.date) + ' ' + badge(a.type) : badge('未評估', 'amber')}</td><td>${scoreBarthel(a)?.total ?? '—'}</td><td>${p ? `個別 ${(p.items || []).length} 項，至 ${rocDate(p.endDate)}` : badge('未開立', 'amber')}</td><td><small>${esc((p?.groups || []).map(g => g.type.replace('團體', '')).join('、'))}</small></td><td>${st?.exp ? `<div class="mini-bar"><i style="width:${st.rate}%"></i></div>${st.ok + st.part}/${st.exp}` : '—'}</td><td class="nowrap"><button type="button" class="btn sm danger ghost" onclick="event.stopPropagation();deleteClient('${c.id}')" title="刪除${esc(c.name)}">${icon('trash', 14)}刪除</button></td></tr>`; }).join('') || `<tr><td colspan="8">${empty(`尚無${term()}資料`)}</td></tr>`}
   </tbody></table></div></section>`;
 }
 function rerenderList(){ const t = document.createElement('div'); t.innerHTML = pageClients(); $('#ctable').replaceWith(t.querySelector('#ctable')); }
@@ -75,7 +75,7 @@ function editClient(id){
     ${F.field('主要診斷', F.input('diagnosis', { ph:'例：腦中風右側偏癱' }), { cls:'span2' })}
     ${F.field('使用輔具', F.input('aids', { ph:'例：四腳拐、輪椅' }))}${F.field('個別注意事項', F.input('caution', { ph:'例：姿勢性低血壓' }))}
     ${F.field('服務狀態', F.select('status', ['服務中', '結案'], { blank:false }))}</div>`,
-    { wide:true, extra:id ? btn('刪除', `if(askConfirm('確定刪除？')){Store.remove('clients','${id}');closeModal(true);App.go('#/clients')}`, { k:'danger ghost' }) : '',
+    { wide:true, extra:id ? btn('刪除此' + term(), `closeModal(true);deleteClient('${id}')`, { k:'danger ghost', i:'trash' }) : '',
       onSave:() => { if (!S.edit.name?.trim()) { toast('請填寫姓名', 'err'); return false; } const s = Store.upsert('clients', S.edit); S.dirty = false; toast('已儲存'); if (!id) App.go('#/client/' + s.id); else route(); }, restore:() => { S.dirty = false; } });
 }
 
@@ -85,7 +85,7 @@ function pageClient(id, tab){
   const c = Store.get('clients', id); if (!c) { App.go('#/clients'); return ''; }
   setTitle(c.name, [isRes() ? c.bed : '', c.gender, ageAt(c.birth) != null ? ageAt(c.birth) + '歲' : '', c.diagnosis].filter(Boolean).join('・'));
   const body = { assess:cAssess, plan:cPlan, check:cCheck, export:cExport }[tab] || cAssess;
-  return `<div class="toolbar"><a class="btn" href="#/clients">${icon('back', 16)}名冊</a><span class="sp"></span>${btn('編輯基本資料', `editClient('${c.id}')`, { i:'edit' })}</div>
+  return `<div class="toolbar"><a class="btn" href="#/clients">${icon('back', 16)}名冊</a><span class="sp"></span>${btn('刪除此' + term(), `deleteClient('${c.id}')`, { k:'danger ghost', i:'trash' })}${btn('編輯基本資料', `editClient('${c.id}')`, { i:'edit' })}</div>
   <div class="tabs">${CTABS.map(([k, l], i) => `<a href="#/client/${c.id}/${k}" class="${tab === k ? 'on' : ''}"><span class="tn-n">${i + 1}</span>${l}</a>`).join('')}</div>${body(c)}`;
 }
 function cAssess(c){
@@ -273,7 +273,7 @@ function planHTML(){
   const types = [...GROUP_TYPES, ...p.groups.map(g => g.type).filter(t => !GROUP_TYPES.includes(t))];
   const sugDev = [...new Set([...(Logic.lastAssessment(c.id)?.problems || []).flatMap(x => x.dev || []), ...p.devices])];
   return `<div class="toolbar sticky-bar"><a class="btn" href="#/client/${c.id}/plan">${icon('back', 16)}${esc(c.name)}</a><span class="sp"></span>
-    ${p.id ? btn('結束此計畫', 'endPlan()', { k:'danger ghost' }) : ''}${btn(p.id ? '儲存' : '儲存並開始執行', 'savePlan()', { k:'primary', i:'check' })}</div>
+    ${p.id ? btn('刪除此版本', 'deletePlan()', { k:'danger ghost', i:'trash' }) + btn('結束此計畫', 'endPlan()', { k:'ghost' }) : ''}${btn(p.id ? '儲存' : '儲存並開始執行', 'savePlan()', { k:'primary', i:'check' })}</div>
   <section class="card"><h2>計畫資訊</h2><div class="form-grid g3">${F.field('開始日期', F.date('startDate'), { req:true })}${F.field('結束日期', F.date('endDate'), { req:true, hint:'建議 8–12 週後再評估' })}${F.field('擬定者', F.input('author'), { req:true })}${F.field('職類', F.select('role', PRO_ROLES))}</div></section>
   <section class="card"><h2>需復能的問題與目標</h2>${p.problems.map((x, i) => `<div class="row-edit">${F.input('problems.' + i)}${btn('✕', `S.edit.problems.splice(${i},1);rerender(planHTML)`, { k:'sm ghost' })}</div>`).join('')}${btn('新增問題', `S.edit.problems.push('');rerender(planHTML)`, { k:'sm', i:'plus' })}
     <h3>復能目標 <small class="muted">以「最想做到的事」為目標，寫出：多久內＋用什麼方式／輔具＋協助程度＋在真實生活中做什麼（從哪裡到哪裡）＋怎麼算達成</small></h3>
@@ -331,15 +331,20 @@ function toggleDev(d, on){ S.edit.devices = on ? [...new Set([...S.edit.devices,
 function addItem(exId){ S.edit.items.push(mkItem(exId)); S.dirty = true; if (!$('#picker')) rerender(planHTML); toast('已加入：' + (findItem(exId)?.name || '自訂項目')); }
 
 /* 項目庫挑選視窗（圖卡） */
-let pick = { q:'', type:'', cat:'' };
-function openPicker(){ openModal('從項目庫挑選', `<div id="picker">${pickerBody()}</div>`, { wide:true, saveLabel:'完成', onSave:() => { rerender(planHTML); }, restore:() => rerender(planHTML) }); }
+let pick = { q:'', type:'', cat:'', post:null };
+const POSTURES = [['', '全部姿勢'], ['坐姿', '坐姿／輪椅可做'], ['臥姿', '床上（臥姿）'], ['站姿', '需站立']];
+const postOk = (e, post) => !post || (e.tags || []).includes(post);
+const wcBadge = e => (e.tags || []).includes('坐姿') ? '<span class="pc-wc">輪椅可做</span>' : '';
+function openPicker(){ if (pick.post === null) pick.post = isRes() ? '坐姿' : ''; openModal('從項目庫挑選', `<div id="picker">${pickerBody()}</div>`, { wide:true, saveLabel:'完成', onSave:() => { rerender(planHTML); }, restore:() => rerender(planHTML) }); }
 function pickerBody(){
   const sug = new Set(S.edit?._sug || []), inPlan = new Set((S.edit?.items || []).map(i => i.exId));
-  const list = allItems().filter(e => (!pick.type || e.type === pick.type) && (!pick.cat || e.cat === pick.cat) && (!pick.q || (e.name + e.how + (e.tags || []).join('')).includes(pick.q))).sort((a, b) => (sug.has(b.id) - sug.has(a.id)));
+  const list = allItems().filter(e => (!pick.type || e.type === pick.type) && (!pick.cat || e.cat === pick.cat) && postOk(e, pick.post) && (!pick.q || (e.name + e.how + (e.tags || []).join('')).includes(pick.q))).sort((a, b) => (sug.has(b.id) - sug.has(a.id)));
   return `<div class="toolbar"><input class="inp" placeholder="搜尋，例：坐站、如廁、手" value="${esc(pick.q)}" oninput="pick.q=this.value;refreshPicker()" aria-label="搜尋">
     <div class="pills">${['', '運動', '日常生活訓練', '其他'].map(t => `<label class="pill"><input type="radio" name="pt" ${pick.type === t ? 'checked' : ''} onchange="pick.type='${t}';pick.cat='';refreshPicker()"><span>${t || '全部'}</span></label>`).join('')}</div></div>
+    <div class="pills cats">${POSTURES.map(([v, l]) => `<label class="pill sm post"><input type="radio" name="pp" ${pick.post === v ? 'checked' : ''} onchange="pick.post='${v}';refreshPicker()"><span>${l}</span></label>`).join('')}</div>
     <div class="pills cats">${['', ...ITEM_CATS].filter(c => !c || allItems().some(e => e.cat === c && (!pick.type || e.type === pick.type))).map(c => `<label class="pill sm"><input type="radio" name="pc" ${pick.cat === c ? 'checked' : ''} onchange="pick.cat='${c}';refreshPicker()"><span>${c || '全部分類'}</span></label>`).join('')}</div>
-    <div class="pgrid">${list.map(e => `<button type="button" class="pcard ${inPlan.has(e.id) ? 'on' : ''} ${sug.has(e.id) ? 'sug' : ''}" onclick="${inPlan.has(e.id) ? '' : `addItem('${e.id}');refreshPicker()`}" title="${esc(e.how)}">${e.img ? `<img src="${esc(e.img)}" alt="" loading="lazy">` : `<span class="noimg-l">${esc(e.cat)}</span>`}<b>${esc(e.name)}</b><small>${esc(e.dose)}</small>${inPlan.has(e.id) ? '<span class="pc-on">✓ 已加入</span>' : sug.has(e.id) ? '<span class="pc-sug">評估建議</span>' : ''}</button>`).join('') || empty('找不到符合的項目')}</div>`;
+    ${isRes() ? '<p class="hint">住宿機構預設只顯示「坐姿／輪椅可做」的項目，可切換「全部姿勢」或「床上」。</p>' : ''}
+    <div class="pgrid">${list.map(e => `<button type="button" class="pcard ${inPlan.has(e.id) ? 'on' : ''} ${sug.has(e.id) ? 'sug' : ''}" onclick="${inPlan.has(e.id) ? '' : `addItem('${e.id}');refreshPicker()`}" title="${esc(e.how)}">${e.img ? `<img src="${esc(e.img)}" alt="" loading="lazy">` : `<span class="noimg-l">${esc(e.cat)}</span>`}${wcBadge(e)}<b>${esc(e.name)}</b><small>${esc(e.dose)}</small>${inPlan.has(e.id) ? '<span class="pc-on">✓ 已加入</span>' : sug.has(e.id) ? '<span class="pc-sug">評估建議</span>' : ''}</button>`).join('') || empty('找不到符合的項目')}</div>`;
 }
 function refreshPicker(){ const el = $('#picker'); if (!el) return; const q = document.activeElement?.getAttribute('aria-label') === '搜尋'; el.innerHTML = pickerBody(); if (q) { const i = el.querySelector('input[aria-label="搜尋"]'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 function savePlan(){
@@ -354,3 +359,29 @@ function savePlan(){
   Store.upsert('plans', p); S.dirty = false; toast(isNew ? `計畫 v${p.version} 開始執行` : '已儲存'); App.go('#/client/' + p.clientId + '/plan');
 }
 function endPlan(){ if (!askConfirm('確定結束此計畫？')) return; const p = Store.get('plans', S.edit.id); p.status = '已結束'; if (p.endDate > todayISO()) p.endDate = todayISO(); Store.upsert('plans', p); S.dirty = false; App.go('#/client/' + p.clientId + '/plan'); }
+
+/* ---------------- 刪除 ---------------- */
+function clientRecords(cid){ return { assessments:Store.all('assessments').filter(x => x.clientId === cid), plans:Store.all('plans').filter(x => x.clientId === cid), checks:Store.all('checks').filter(x => x.clientId === cid), weekNotes:Store.all('weekNotes').filter(x => x.clientId === cid) }; }
+async function deleteClient(cid){
+  const c = Store.get('clients', cid); if (!c) return;
+  const r = clientRecords(cid);
+  if (!askConfirm(`確定刪除「${c.name}」？\n\n會一併刪除：評估 ${r.assessments.length} 筆、計畫 ${r.plans.length} 版、勾選紀錄 ${r.checks.length} 筆。\n${Folder.ready ? '刪除前會先在資料夾留一份備份，可從「設定與備份」還原。' : '刪除後無法復原，建議先匯出備份。'}`)) return;
+  await Folder.snapshot('刪除前');
+  Object.entries(r).forEach(([col, list]) => list.forEach(x => Store.remove(col, x.id)));
+  Store.remove('clients', cid); S.dirty = false; toast(`已刪除「${c.name}」`);
+  if ((location.hash || '').includes(cid)) App.go('#/clients'); else route();
+}
+async function clearDemoClients(){
+  if (!askConfirm('確定清除 3 個模擬個案及其評估、計畫與勾選紀錄？（您自己新增的資料不受影響）')) return;
+  await Folder.snapshot('刪除前');
+  let n = 0; for (const col of COLLECTIONS) for (const r of Store.DB[col]) if (r.demo && !r.deleted) { Store.remove(col, r.id); n++; }
+  toast('已清除模擬個案'); App.go('#/clients'); route();
+}
+async function deletePlan(){
+  const p = Store.get('plans', S.edit.id); if (!p) return;
+  if (!askConfirm(`確定刪除計畫 v${p.version}？（已勾選的紀錄會保留在該${term()}名下）`)) return;
+  await Folder.snapshot('刪除前'); Store.remove('plans', p.id);
+  const prev = Logic.plansOf(p.clientId).filter(x => x.status === '已結束').at(-1);
+  if (prev && !activePlan(p.clientId) && askConfirm(`要把上一版 v${prev.version} 恢復為「執行中」嗎？`)) { prev.status = '執行中'; if (prev.endDate < todayISO()) prev.endDate = addDays(todayISO(), 28); Store.upsert('plans', prev); }
+  S.dirty = false; toast('已刪除計畫'); App.go('#/client/' + p.clientId + '/plan');
+}

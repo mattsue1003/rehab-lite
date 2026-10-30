@@ -122,7 +122,7 @@ async function downloadDocx(doc){
   ctx.media.forEach(m => zip.file('word/media/' + m.name, m.bytes));
   zip.file('word/document.xml', xml);
   const blob = await zip.generateAsync({ type:'blob', compression:'DEFLATE', mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-  download(fileSafe(doc.title) + '_' + todayISO() + '.docx', blob); toast('已下載 Word 檔');
+  await download(fileSafe(doc.title) + '_' + todayISO() + '.docx', blob); toast('已產生 Word 檔');
 }
 
 /* ---------- PowerPoint（.pptx，PptxGenJS） ---------- */
@@ -170,7 +170,8 @@ async function downloadPptx(doc){
       s.addTable(rows, { ...tbl(b.head.length > 10 ? 9 : 13), colW:ws.map(w => w / tot * 12.3) }); s = null;
     }
   }
-  await p.writeFile({ fileName:fileSafe(doc.title) + '_' + todayISO() + '.pptx', compression:true }); toast('已下載 PowerPoint 檔');
+  const blob = await p.write({ outputType:'blob', compression:true });
+  await download(fileSafe(doc.title) + '_' + todayISO() + '.pptx', blob); toast('已產生 PowerPoint 檔');
 }
 
 /* ---------- 輸出按鈕列 ---------- */
@@ -181,6 +182,6 @@ function exportBar(key, fn, kinds = ['pdf', 'word', 'ppt']){
   return `<span class="exp">${kinds.map(k => btn(L[k][0], `runExport('${key}','${k}')`, { k:'sm', i:L[k][1] })).join('')}</span>`;
 }
 async function runExport(key, kind){
-  try { const doc = DOCS[key](); if (!doc) return; toast('檔案產生中…'); if (kind === 'pdf') await printDoc(doc); else if (kind === 'word') await downloadDocx(doc); else await downloadPptx(doc); }
+  try { if (kind !== 'pdf') await Folder.ensure(); const doc = DOCS[key](); if (!doc) return; toast('檔案產生中…'); if (kind === 'pdf') await printDoc(doc); else if (kind === 'word') await downloadDocx(doc); else await downloadPptx(doc); }
   catch(e){ console.error(e); toast('產生檔案失敗：' + e.message, 'err'); }
 }

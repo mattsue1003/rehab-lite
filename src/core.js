@@ -86,7 +86,7 @@ function closeModal(saved){ $('#modal').innerHTML = ''; if (!saved && modalCfg?.
 function askConfirm(msg){ return window.confirm(msg); }
 
 /* ---------- 下載與 CSV ---------- */
-function download(name, data, type){ const b = data instanceof Blob ? data : new Blob([data], { type }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); }
+async function download(name, data, type){ const b = data instanceof Blob ? data : new Blob([data], { type }); if (typeof Folder !== 'undefined' && await Folder.save(name, b)) return; const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); }
 function exportCSV(name, headers, rows){
   const q = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const body = [headers, ...rows].map(r => r.map(q).join(',')).join('\r\n');

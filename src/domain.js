@@ -84,11 +84,19 @@ const COPM_KW = [
 const copmRows = a => (a?.copm || []).filter(x => x.activity && String(x.activity).trim());
 const copmAvg = (a, k) => { const v = copmRows(a).map(x => x[k]).filter(x => x !== '' && x != null).map(Number); return v.length ? Math.round(v.reduce((s, x) => s + x, 0) / v.length * 10) / 10 : null; };
 
+/* ---------- 輪椅層級：以坐姿／輪椅上可做的項目取代需站立的項目 ---------- */
+const SEATED_ALT = { 'single-leg-stance-supported':'seated-lateral-weight-shift', 'tandem-stance':'seated-forward-reach', 'standing-weight-shift':'seated-lateral-weight-shift',
+  'forward-walking-line':'wc_propel', 'walking-program':'seated-arm-swing', 'heel-raise':'seated-heel-raise', 'hip-abduction-standing':'seated-band-abduction',
+  'step-up':'long-arc-quad', 'stair-descent-practice':'seated-ball-squeeze', 'shower-step-entry':null, 'adl_walkmeal':'wc_propel',
+  'kitchen-task-sequence':'seated-forward-reach', 'counter-reaching-standing':'seated-cross-body-reach', 'laundry-basket-lift':'cloth-folding' };
+function isWheelchairLevel(client, a){ const b = a?.adl || {}, lo = k => b[k] !== '' && b[k] != null && +b[k] <= 5; return /輪椅/.test(client?.aids || '') || lo('mobility') || lo('transfer'); }
+
 /* ---------- 評估結果 → 問題、建議介入、輔具、團體 ---------- */
 const GROUP_TYPES = ['運動團體','認知團體','懷舊團體','社交團體','手工藝團體','藝術團體','音樂團體','園藝團體'];
 function suggestFromAssessment(a, client){
   const out=[]; if(!a) return out;
-  const add=(code,text,ex,dev,grp,ref)=>{ if(!out.find(o=>o.code===code)) out.push({code,text,ex:ex||[],dev:dev||[],grp:grp||[],referral:ref||''}); };
+  const wc=isWheelchairLevel(client,a);
+  const add=(code,text,ex,dev,grp,ref)=>{ if(out.find(o=>o.code===code)) return; ex=[...new Set((ex||[]).map(e=>wc&&e in SEATED_ALT?SEATED_ALT[e]:e).filter(Boolean))]; if(wc&&code==='transfer') ex.push('wc_brake'); out.push({code,text,ex,dev:dev||[],grp:grp||[],referral:ref||''}); };
   copmRows(a).slice().sort((x,y)=>(+y.imp||0)-(+x.imp||0)).forEach((c,ix)=>{ const ex=[],grp=[]; COPM_KW.forEach(([re,e,g])=>{ if(re.test(c.activity)){ ex.push(...e); grp.push(...(g||[])); } });
     add('copm'+ix,'最想做到：'+c.activity+(c.perf!==''&&c.perf!=null?`（目前表現 ${c.perf}/10）`:''),[...new Set(ex)],[],[...new Set(grp)]); });
   const b=a.adl||{}, has=k=>b[k]!==''&&b[k]!=null;

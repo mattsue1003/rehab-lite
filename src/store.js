@@ -45,7 +45,11 @@ const Store = (() => {
       try { cols.forEach(c => localStorage.setItem('rehabl:'+c, JSON.stringify(DB[c]))); }
       catch(e){ App.toast('瀏覽器儲存空間不足，請匯出備份', 'err'); }
     }
+    if (cols.some(c => c !== 'meta') && typeof onStoreFlush === 'function') onStoreFlush();
   }
+  // 存放非 JSON 物件（例如資料夾授權 handle）
+  function rawGet(k){ return idb ? idbGet(k) : Promise.resolve(null); }
+  function rawSet(k, v){ return new Promise(res => { if (!idb) return res(false); try { const tx = idb.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k); tx.oncomplete = () => res(true); tx.onerror = () => res(false); } catch(e){ res(false); } }); }
   window.addEventListener('beforeunload', () => { if (dirty.size) flush(); });
 
   const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -81,5 +85,5 @@ const Store = (() => {
   }
   function clearAll(){ COLLECTIONS.forEach(c => { DB[c] = []; touch(c); }); DB.meta = {}; touch('meta'); }
 
-  return { DB, load, all, get, upsert, remove, setMeta, exportAll, mergeImport, clearAll, newId, flush };
+  return { DB, load, all, get, upsert, remove, setMeta, exportAll, mergeImport, clearAll, newId, flush, rawGet, rawSet };
 })();

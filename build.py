@@ -2,7 +2,7 @@
 import pathlib
 d = pathlib.Path(__file__).parent
 src = d / 'src'
-JS = ['domain.js', 'library-data.js', 'store.js', 'core.js', 'docgen.js', 'docs.js', 'app.js', 'pages-indiv.js', 'pages-lib.js', 'demo.js']
+JS = ['domain.js', 'library-data.js', 'store.js', 'core.js', 'folder.js', 'docgen.js', 'docs.js', 'app.js', 'pages-indiv.js', 'pages-lib.js', 'demo.js']
 html = (src / 'index.html').read_text(encoding='utf-8')
 out = (html.replace('/*STYLES*/', (src / 'styles.css').read_text(encoding='utf-8'))
            .replace('/*VENDOR*/', (src / 'vendor' / 'pptxgen.bundle.js').read_text(encoding='utf-8'))
