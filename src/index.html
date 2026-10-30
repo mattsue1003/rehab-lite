@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>復能計畫與執行檢核</title>
+<meta name="description" content="日照與住宿機構用：評估、開立個別與團體復能計畫、執行檢核，並輸出 Word、PPT、PDF 列印勾選。">
+<style>
+/*STYLES*/
+</style>
+</head>
+<body>
+<div id="layout">
+  <aside id="side"></aside>
+  <div id="mainwrap">
+    <header id="top"></header>
+    <main id="main"><div class="empty">載入中…</div></main>
+  </div>
+</div>
+<div id="modal"></div>
+<div id="toasts" aria-live="polite"></div>
+<div id="print"></div>
+<noscript>本系統需要啟用 JavaScript。</noscript>
+<!-- PptxGenJS 4.0.1（含 JSZip，MIT License）內嵌：離線也能匯出 PPT／Word -->
+<script>
+/*VENDOR*/
+</script>
+<script>
+/*SCRIPTS*/
+</script>
+<!-- 公版「錯誤／建議」回報按鈕（通報進共用試算表，「網站」欄位＝復能計畫與執行檢核） -->
+<script>
+window.__errs=[]; window.addEventListener('error',e=>{ window.__errs.push(String(e.message).slice(0,120)); if(window.__errs.length>5) window.__errs.shift(); });
+/* 回報時自動帶入：目前頁面＋技術資訊（不含個案姓名或任何紀錄內容） */
+window.REPORT_CONTEXT=()=>{
+  let tech=''; try{
+    const page=(location.hash||'#/').replace(/\/[a-z0-9_]{6,}/gi,'/…').split('?')[0];
+    const n=c=>Store.all(c).length;
+    tech=`頁面 ${page}；${Store.DB.meta.orgType||''}；畫面 ${innerWidth}×${innerHeight}；${navigator.userAgent.slice(0,120)}；個案 ${n('clients')}／計畫 ${n('plans')}／團體 ${n('groups')}${window.__errs.length?'；最近錯誤：'+window.__errs.join(' | '):''}`;
+  }catch(e){}
+  return {item:(document.querySelector('#top-title b')||{}).textContent||'', itemName:tech.slice(0,600)};
+};
+/* 縮小成角落小圓鈕：滑過或聚焦才展開文字 */
+window.addEventListener('load',()=>{
+  const host=document.querySelector('[data-oth-report]'); if(!host||!host.shadowRoot) return;
+  const st=document.createElement('style');
+  st.textContent=`.fab{width:34px;height:34px;padding:0;gap:0;justify-content:center;font-size:0;opacity:.72;right:14px;
+      box-shadow:0 2px 8px rgba(0,0,0,.14),0 0 0 1.5px #6b8f71 inset;transition:opacity .2s}
+    .fab:hover,.fab:focus-visible{opacity:1;width:auto;padding:0 12px;gap:6px;font-size:12.5px}
+    .fab svg{width:15px;height:15px}
+    @media (max-width:760px){.fab{right:10px}}`;
+  host.shadowRoot.appendChild(st);
+  const fab=host.shadowRoot.querySelector('.fab'); if(fab){fab.title='回報錯誤或建議';fab.setAttribute('aria-label','回報錯誤或建議');}
+});
+</script>
+<script src="https://mattsue1003.github.io/oth-report-button/report.js" data-site="復能計畫與執行檢核" data-color="#6b8f71" data-label="錯誤／建議" data-offset="16" defer></script>
+</body>
+</html>
