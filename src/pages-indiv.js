@@ -162,7 +162,7 @@ function pageAssessEdit(id, cid){
       carried = prev;
     }
     a.copm = prev && copmRows(prev).length ? copmRows(prev).map(x => ({ activity:x.activity, area:x.area || '', imp:x.imp ?? '', perf:'', sat:'' })) : [{}, {}, {}];
-    const pl = activePlan(cid); if (pl && prev) a.goalReview = (pl.goals || []).filter(g => g.text).map(g => ({ goalId:g.id, planId:pl.id, text:g.text, measure:g.measure || '', baseline:g.baseline || '', target:g.target || '', current:'', gas:'', note:'' }));
+    const pl = activePlan(cid); if (pl && prev) a.goalReview = (pl.goals || []).filter(g => g.text).map(g => ({ goalId:g.id, planId:pl.id, activity:g.activity || '', text:g.text, measure:g.measure || '', baseline:g.baseline || '', target:g.target || '', current:'', gas:'', note:'' }));
   }
   if (!a.copm) a.copm = [{}, {}, {}];
   const c = Store.get('clients', a.clientId); if (!c) { App.go('#/clients'); return ''; }
@@ -235,7 +235,7 @@ function saveAssess(toPlan){
   if (!a.date || !a.assessor?.trim()) return toast('請填寫評估日期與評估者', 'err');
   if ((!scoreBarthel(a) || scoreBarthel(a).partial) && !askConfirm('巴氏量表尚未填完，仍要儲存？')) return;
   const sg = suggestFromAssessment(a, c);
-  a.problems = [...sg.filter(s => a.problemSel?.[s.code]), ...(a.customProblems || '').split('\n').map(t => t.trim()).filter(Boolean).map(t => ({ code:'custom', text:t, ex:[], dev:[], grp:[], referral:'' }))];
+  a.problems = [...sg.filter(s => a.problemSel?.[s.code] !== false), ...(a.customProblems || '').split('\n').map(t => t.trim()).filter(Boolean).map(t => ({ code:'custom', text:t, ex:[], dev:[], grp:[], referral:'' }))];
   const s = Store.upsert('assessments', a); S.dirty = false; toast('評估已儲存');
   const act = activePlan(a.clientId);
   App.go(toPlan ? `#/plan/new/${a.clientId}?from=${s.id}${act ? '&copy=' + act.id : ''}` : `#/client/${a.clientId}`);
@@ -248,16 +248,22 @@ function pagePlanEdit(id, cid, params){
   if (id) p = clone(Store.get('plans', id) || {});
   else {
     const from = params.get('from') ? Store.get('assessments', params.get('from')) : null, base = params.get('copy') ? Store.get('plans', params.get('copy')) : null;
-    const probs = from?.problems || [];
-    p = { clientId:cid, assessmentId:from?.id || base?.assessmentId || '', version:Math.max(0, ...Logic.plansOf(cid).map(x => x.version || 0)) + 1, copyOf:base?.id || '', status:'草稿',
-      startDate:todayISO(), endDate:addDays(todayISO(), 83), author:App.currentUserId(), role:from?.role || base?.role || '',
-      problems:from ? probs.map(x => x.text) : [...(base?.problems || [])], goals:clone(base?.goals || []), items:clone(base?.items || []),
-      groups:clone(base?.groups || []), devices:[...new Set([...(base?.devices || []), ...probs.flatMap(x => x.dev || [])])], note:base?.note || '' };
-    if (!base) [...new Set(probs.flatMap(x => x.grp || []))].forEach(t => p.groups.push({ type:t, freq:'', note:'' }));
+    const done = achievedGoals(cid, from);
     const cp = from ? copmRows(from).slice().sort((x, y) => (+y.imp || 0) - (+x.imp || 0)) : [];
     const perfTxt = x => x.perf !== '' && x.perf != null ? `自評表現 ${x.perf}/10` : '';
-    if (!base) p.goals = cp.slice(0, 3).map(x => newGoal({ activity:x.activity, baseline:perfTxt(x) }));
-    else cp.forEach(x => { const g = p.goals.find(g => (g.activity || g.text) === x.activity); if (g && perfTxt(x)) g.baseline = perfTxt(x); });
+    // 目標：已達成（再評 GAS ≥ 0）的不自動帶入；新的「最想做到的事」（未達成過）才加成新目標
+    let goals = clone(base?.goals || []).filter(g => !done.ids.has(g.id) && !done.acts.has(g.activity || ''));
+    const carried = clone(base?.goals || []).filter(g => !goals.includes(g) && (done.ids.has(g.id) || done.acts.has(g.activity || '')));
+    cp.forEach(x => { const g = goals.find(g => (g.activity || g.text) === x.activity); if (g && perfTxt(x)) g.baseline = perfTxt(x); });
+    cp.filter(x => !done.acts.has(x.activity) && !goals.some(g => (g.activity || g.text) === x.activity)).forEach(x => { if (goals.length < 3) goals.push(newGoal({ activity:x.activity, baseline:perfTxt(x) })); });
+    // 問題：量表發現的功能問題全部帶入；「最想做到」只帶入有對應目標的
+    const probs = planProblemsFor(from, goals);
+    p = { clientId:cid, assessmentId:from?.id || base?.assessmentId || '', version:Math.max(0, ...Logic.plansOf(cid).map(x => x.version || 0)) + 1, copyOf:base?.id || '', status:'草稿',
+      startDate:todayISO(), endDate:addDays(todayISO(), 83), author:App.currentUserId(), role:from?.role || base?.role || '',
+      problems:from ? probs.map(x => x.text) : [...(base?.problems || [])], goals, items:clone(base?.items || []),
+      groups:clone(base?.groups || []), devices:[...new Set([...(base?.devices || []), ...probs.flatMap(x => x.dev || [])])], note:base?.note || '' };
+    p._done = carried;
+    if (!base) [...new Set(probs.flatMap(x => x.grp || []))].forEach(t => p.groups.push({ type:t, freq:'', note:'' }));
     if (!p.goals.length) p.goals.push(newGoal());
     p._sug = [...new Set(probs.flatMap(x => x.ex || []))];
   }
@@ -277,6 +283,7 @@ function planHTML(){
   <section class="card"><h2>計畫資訊</h2><div class="form-grid g3">${F.field('開始日期', F.date('startDate'), { req:true })}${F.field('結束日期', F.date('endDate'), { req:true, hint:'建議 8–12 週後再評估' })}${F.field('擬定者', F.input('author'), { req:true })}${F.field('職類', F.select('role', PRO_ROLES))}</div></section>
   <section class="card"><h2>需復能的問題與目標</h2>${p.problems.map((x, i) => `<div class="row-edit">${F.input('problems.' + i)}${btn('✕', `S.edit.problems.splice(${i},1);rerender(planHTML)`, { k:'sm ghost' })}</div>`).join('')}${btn('新增問題', `S.edit.problems.push('');rerender(planHTML)`, { k:'sm', i:'plus' })}
     <h3>復能目標 <small class="muted">以長輩「最想做到的事」為核心，寫成生活中有意義的一件事：多久內＋用什麼方式／輔具＋協助程度＋在什麼情境做到什麼＋怎麼算達成</small></h3>
+    ${(p._done || []).length ? `<div class="notice done-goals"><b>已達成的目標（未帶入新計畫，維持即可）：</b>${p._done.map((g, i) => `<div class="row-edit"><span>✓ ${esc(g.text)}</span><button type="button" class="chip" onclick="S.edit.goals.push(S.edit._done.splice(${i},1)[0]);S.dirty=true;rerender(planHTML)">重新加入</button></div>`).join('')}</div>` : ''}
     ${p.goals.map((g, i) => goalCard(g, i)).join('')}
     ${btn('新增目標', `S.edit.goals.push(newGoal());rerender(planHTML)`, { k:'sm', i:'plus' })}</section>
   <section class="card"><h2>個別介入 <small>運動、日常生活訓練｜會出現在今日勾選與檢核表</small><span class="sp"></span>${btn('從項目庫挑選', 'openPicker()', { k:'primary sm', i:'plus' })}</h2>
@@ -352,7 +359,7 @@ function pickerBody(){
     <div class="pills cats">${POSTURES.map(([v, l]) => `<label class="pill sm post"><input type="radio" name="pp" ${pick.post === v ? 'checked' : ''} onchange="pick.post='${v}';refreshPicker()"><span>${l}</span></label>`).join('')}</div>
     <div class="pills cats">${['', ...ITEM_CATS].filter(c => !c || allItems().some(e => e.cat === c && (!pick.type || e.type === pick.type))).map(c => `<label class="pill sm"><input type="radio" name="pc" ${pick.cat === c ? 'checked' : ''} onchange="pick.cat='${c}';refreshPicker()"><span>${c || '全部分類'}</span></label>`).join('')}</div>
     ${isRes() ? '<p class="hint">住宿機構預設只顯示「坐姿／輪椅可做」的項目，可切換「全部姿勢」或「床上」。</p>' : ''}
-    <div class="pgrid">${list.map(e => `<button type="button" class="pcard ${inPlan.has(e.id) ? 'on' : ''} ${sug.has(e.id) ? 'sug' : ''}" onclick="${inPlan.has(e.id) ? '' : `addItem('${e.id}');refreshPicker()`}" title="${esc(e.how)}">${e.img ? `<img src="${esc(e.img)}" alt="" loading="lazy">` : `<span class="noimg-l">${esc(e.cat)}</span>`}${wcBadge(e)}<b>${esc(e.name)}</b><small>${esc(e.dose)}</small>${inPlan.has(e.id) ? '<span class="pc-on">✓ 已加入</span>' : sug.has(e.id) ? '<span class="pc-sug">評估建議</span>' : ''}</button>`).join('') || empty('找不到符合的項目')}</div>`;
+    <div class="pgrid">${list.map(e => `<button type="button" class="pcard ${inPlan.has(e.id) ? 'on' : ''} ${sug.has(e.id) ? 'sug' : ''}" onclick="${inPlan.has(e.id) ? '' : `addItem('${e.id}');refreshPicker()`}" title="${esc(e.how)}">${e.img ? `<img src="${esc(e.img)}" alt="" loading="lazy">` : `<span class="noimg-l">${icon('heart', 28)}<small>圖片準備中</small></span>`}${wcBadge(e)}<b>${esc(e.name)}</b><small>${esc(e.dose)}</small>${inPlan.has(e.id) ? '<span class="pc-on">✓ 已加入</span>' : sug.has(e.id) ? '<span class="pc-sug">評估建議</span>' : ''}</button>`).join('') || empty('找不到符合的項目')}</div>`;
 }
 function refreshPicker(){ const el = $('#picker'); if (!el) return; const q = document.activeElement?.getAttribute('aria-label') === '搜尋'; el.innerHTML = pickerBody(); if (q) { const i = el.querySelector('input[aria-label="搜尋"]'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 function savePlan(){
@@ -362,7 +369,7 @@ function savePlan(){
   if (!p.items.length && !p.groups.length) err.push('請至少加入一個個別項目或團體');
   p.items.forEach((it, i) => { if (!it.name?.trim()) err.push(`第${i + 1}項未填名稱`); if (!(it.days || []).length) err.push(`「${it.name || i + 1}」未勾選執行日`); });
   if (err.length) { if (!p.goals.length) p.goals.push(newGoal()); rerender(planHTML); return toast(err.join('；'), 'err'); }
-  const isNew = !p.id; delete p._sug;
+  const isNew = !p.id; delete p._sug; delete p._done;
   if (isNew) { Logic.plansOf(p.clientId).filter(x => x.status === '執行中').forEach(x => { x.status = '已結束'; if (x.endDate >= p.startDate) x.endDate = addDays(p.startDate, -1); Store.upsert('plans', x); }); p.status = '執行中'; }
   Store.upsert('plans', p); S.dirty = false; toast(isNew ? `計畫 v${p.version} 開始執行` : '已儲存'); App.go('#/client/' + p.clientId + '/plan');
 }
@@ -392,4 +399,21 @@ async function deletePlan(){
   const prev = Logic.plansOf(p.clientId).filter(x => x.status === '已結束').at(-1);
   if (prev && !activePlan(p.clientId) && askConfirm(`要把上一版 v${prev.version} 恢復為「執行中」嗎？`)) { prev.status = '執行中'; if (prev.endDate < todayISO()) prev.endDate = addDays(todayISO(), 28); Store.upsert('plans', prev); }
   S.dirty = false; toast('已刪除計畫'); App.go('#/client/' + p.clientId + '/plan');
+}
+
+/* 已達成的目標：任一次再評的 GAS ≥ 0（含本次評估） */
+function achievedGoals(cid, cur){
+  const ids = new Set(), acts = new Set();
+  const plans = Logic.plansOf(cid);
+  for (const a of [...Logic.assessmentsOf(cid), ...(cur ? [cur] : [])]) for (const r of (a.goalReview || [])) {
+    if (r.gas === '' || r.gas == null || +r.gas < 0) continue;
+    ids.add(r.goalId);
+    const g = plans.find(p => p.id === r.planId)?.goals?.find(x => x.id === r.goalId);
+    const act = r.activity || g?.activity || ''; if (act) acts.add(act);
+  }
+  return { ids, acts };
+}
+/* 計畫的問題清單：功能問題全部保留；「最想做到」只保留有對應目標者 */
+function planProblemsFor(a, goals){
+  return (a?.problems || []).filter(pr => !/^copm/.test(pr.code || '') || goals.some(g => g.activity && pr.text.includes(g.activity)));
 }

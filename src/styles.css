@@ -334,3 +334,6 @@ table.copm td:nth-child(2){min-width:220px;white-space:normal}
 .brand .b2{max-width:none;white-space:normal}
 .pc-wc{position:absolute;top:10px;right:10px;font-size:11px;padding:2px 7px;border-radius:999px;background:rgba(255,255,255,.92);color:var(--pri-d);border:1px solid var(--pri)}
 .pill.post input:checked+span{background:var(--accent);border-color:var(--accent)}
+.done-goals .row-edit{justify-content:space-between;margin:4px 0}
+.noimg-l{display:flex!important;flex-direction:column;gap:4px;align-items:center;justify-content:center;color:var(--pri);background:repeating-linear-gradient(135deg,var(--surface2),var(--surface2) 10px,var(--pri-l) 10px,var(--pri-l) 20px)!important}
+.noimg-l small{font-size:12px;color:var(--muted)}
