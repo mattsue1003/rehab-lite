@@ -70,7 +70,7 @@ function planDoc(pl){
   if (a) blocks.push({ t:'p', text:`評估依據：${rocDate(a.date)} ${a.type}　巴氏 ${scoreBarthel(a)?.total ?? '—'} 分、TUG ${a.phy?.tug || '—'} 秒、30秒坐站 ${a.phy?.cs30 ?? '—'} 次、握力 ${a.phy?.grip || '—'} 公斤` });
   if (a && copmRows(a).length) blocks.push({ t:'h', text:'長輩最想做到的事' }, { t:'table', head:['想做到的事', '重要性', '目前表現', '滿意度'], widths:[5, 1, 1, 1], center:[1, 2, 3], rows:copmRows(a).map(x => [x.activity, x.imp ?? '', x.perf ?? '', x.sat ?? '']) });
   if ((pl.problems || []).filter(Boolean).length) blocks.push({ t:'h', text:'需復能的問題' }, { t:'p', text:pl.problems.filter(Boolean).map((x, i) => `${i + 1}. ${x}`).join('\n') });
-  if ((pl.goals || []).length) blocks.push({ t:'h', text:'復能目標' }, { t:'table', head:['#', '復能目標（時限＋方式＋協助程度＋生活情境＋可測量）', '目前狀況'], widths:[0.4, 6.4, 2.6], center:[0], rows:pl.goals.map((g, i) => [i + 1, g.text, g.baseline || '']) });
+  if ((pl.goals || []).length) blocks.push({ t:'h', text:'復能目標' }, { t:'table', head:['#', '復能目標（時限＋方式＋協助程度＋生活情境與意義＋可測量）', '目前狀況'], widths:[0.4, 6.4, 2.6], center:[0], rows:pl.goals.map((g, i) => [i + 1, g.text, g.baseline || '']) });
   const items = planItems(pl);
   if (items.length) blocks.push({ t:'h', text:`個別介入（${items.length} 項）` }, { t:'items', items });
   if ((pl.groups || []).length) blocks.push({ t:'h', text:'團體介入' }, { t:'table', head:['團體', '頻率', '備註'], widths:[2, 2, 5], rows:pl.groups.map(g => [g.type, g.freq || '', g.note || '']) });

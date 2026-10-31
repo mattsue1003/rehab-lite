@@ -1166,7 +1166,7 @@ function planDoc(pl){
   if (a) blocks.push({ t:'p', text:`評估依據：${rocDate(a.date)} ${a.type}　巴氏 ${scoreBarthel(a)?.total ?? '—'} 分、TUG ${a.phy?.tug || '—'} 秒、30秒坐站 ${a.phy?.cs30 ?? '—'} 次、握力 ${a.phy?.grip || '—'} 公斤` });
   if (a && copmRows(a).length) blocks.push({ t:'h', text:'長輩最想做到的事' }, { t:'table', head:['想做到的事', '重要性', '目前表現', '滿意度'], widths:[5, 1, 1, 1], center:[1, 2, 3], rows:copmRows(a).map(x => [x.activity, x.imp ?? '', x.perf ?? '', x.sat ?? '']) });
   if ((pl.problems || []).filter(Boolean).length) blocks.push({ t:'h', text:'需復能的問題' }, { t:'p', text:pl.problems.filter(Boolean).map((x, i) => `${i + 1}. ${x}`).join('\n') });
-  if ((pl.goals || []).length) blocks.push({ t:'h', text:'復能目標' }, { t:'table', head:['#', '復能目標（時限＋方式＋協助程度＋生活情境＋可測量）', '目前狀況'], widths:[0.4, 6.4, 2.6], center:[0], rows:pl.goals.map((g, i) => [i + 1, g.text, g.baseline || '']) });
+  if ((pl.goals || []).length) blocks.push({ t:'h', text:'復能目標' }, { t:'table', head:['#', '復能目標（時限＋方式＋協助程度＋生活情境與意義＋可測量）', '目前狀況'], widths:[0.4, 6.4, 2.6], center:[0], rows:pl.goals.map((g, i) => [i + 1, g.text, g.baseline || '']) });
   const items = planItems(pl);
   if (items.length) blocks.push({ t:'h', text:`個別介入（${items.length} 項）` }, { t:'items', items });
   if ((pl.groups || []).length) blocks.push({ t:'h', text:'團體介入' }, { t:'table', head:['團體', '頻率', '備註'], widths:[2, 2, 5], rows:pl.groups.map(g => [g.type, g.freq || '', g.note || '']) });
@@ -1626,7 +1626,7 @@ function planHTML(){
     ${p.id ? btn('刪除此版本', 'deletePlan()', { k:'danger ghost', i:'trash' }) + btn('結束此計畫', 'endPlan()', { k:'ghost' }) : ''}${btn(p.id ? '儲存' : '儲存並開始執行', 'savePlan()', { k:'primary', i:'check' })}</div>
   <section class="card"><h2>計畫資訊</h2><div class="form-grid g3">${F.field('開始日期', F.date('startDate'), { req:true })}${F.field('結束日期', F.date('endDate'), { req:true, hint:'建議 8–12 週後再評估' })}${F.field('擬定者', F.input('author'), { req:true })}${F.field('職類', F.select('role', PRO_ROLES))}</div></section>
   <section class="card"><h2>需復能的問題與目標</h2>${p.problems.map((x, i) => `<div class="row-edit">${F.input('problems.' + i)}${btn('✕', `S.edit.problems.splice(${i},1);rerender(planHTML)`, { k:'sm ghost' })}</div>`).join('')}${btn('新增問題', `S.edit.problems.push('');rerender(planHTML)`, { k:'sm', i:'plus' })}
-    <h3>復能目標 <small class="muted">以「最想做到的事」為目標，寫出：多久內＋用什麼方式／輔具＋協助程度＋在真實生活中做什麼（從哪裡到哪裡）＋怎麼算達成</small></h3>
+    <h3>復能目標 <small class="muted">以長輩「最想做到的事」為核心，寫成生活中有意義的一件事：多久內＋用什麼方式／輔具＋協助程度＋在什麼情境做到什麼＋怎麼算達成</small></h3>
     ${p.goals.map((g, i) => goalCard(g, i)).join('')}
     ${btn('新增目標', `S.edit.goals.push(newGoal());rerender(planHTML)`, { k:'sm', i:'plus' })}</section>
   <section class="card"><h2>個別介入 <small>運動、日常生活訓練｜會出現在今日勾選與檢核表</small><span class="sp"></span>${btn('從項目庫挑選', 'openPicker()', { k:'primary sm', i:'plus' })}</h2>
@@ -1648,31 +1648,39 @@ function planHTML(){
 /* ---------- 復能目標（五要素：時限、方式／輔具、協助程度、活動情境、可測量） ---------- */
 const GOAL_WHEN = ['4 週內', '8 週內', '12 週內', '3 個月內', '6 個月內'];
 const GOAL_ASSIST = ['可獨立', '在旁人監督下（不需碰觸）', '在口頭提示下', '在少量協助下', '在中度協助下'];
-const SCENES = [
-  ['移動', /走|移動|散步|客廳|房間/, ['從臥室床邊走到客廳沙發', '從客廳走到廁所', '從房間走到餐桌吃飯']],
-  ['移位', /移位|輪椅|床上|起床|坐起/, ['從床上坐起並移到輪椅', '從輪椅移到馬桶', '從輪椅移到餐桌椅子']],
-  ['如廁', /廁|尿|便/, ['自己走進廁所、穿脫褲子並完成如廁', '夜間自己下床使用床邊便盆椅']],
-  ['洗澡', /洗澡|沐浴/, ['坐在洗澡椅上自己洗身體前面與手臂', '自己跨過浴室門檻進出浴室']],
-  ['進食', /吃|飯|進食/, ['自己吃完一餐碗裡的食物', '自己拿杯子喝完一杯水']],
-  ['穿衣', /穿|衣|鞋|襪/, ['坐在床邊自己穿上衣與褲子', '自己穿脫鞋子']],
-  ['外出', /外出|出門|市場|公園|散步|廟|教會|買/, ['從家門口走到巷口便利商店', '從家門口走到社區據點', '自己走到公園繞一圈']],
-  ['樓梯', /樓梯|上樓|下樓/, ['扶扶手上下家門口的 3 階樓梯', '自己上下一層樓梯回家']],
-  ['家務', /煮|菜|洗衣|晾|掃|家務/, ['站在流理台前洗菜、切菜 10 分鐘', '把洗好的衣服晾到陽台衣架上']],
+/* 目標範例：依活動類型給「生活情境＋意義」與對應的可測量方式（復能精神：在真實生活中、為了想做的事） */
+const GOAL_TYPES = [
+  { k:'移動', re:/走|移動|散步|客廳|房間|看電視/, hint:'從哪裡到哪裡、去做什麼', scenes:['從臥室走到客廳，和家人一起看電視', '從房間走到餐廳，和大家一起吃午餐', '從床邊走到窗邊，看看外面的天氣'], measures:['中途不休息', '每天 2 次', '不需他人扶持'] },
+  { k:'移位', re:/移位|輪椅|床上|起床|坐起|沙發/, hint:'從哪裡移到哪裡、為了做什麼', scenes:['從輪椅移到沙發上，陪孫子看卡通', '早上自己從床上坐起移到輪椅，準備參加早操', '從輪椅移到餐桌椅子上，和家人一起吃飯'], measures:['每天 2 次', '3 次中有 2 次成功', '不需他人抬起'] },
+  { k:'如廁', re:/廁|尿|便/, hint:'在什麼情境下自己完成、對長輩的意義', scenes:['白天自己去廁所，不再需要包尿布', '出門參加活動時，能自己使用外面的廁所', '夜間自己下床使用床邊便盆椅，不必叫醒家人'], measures:['每天 3 次中有 2 次成功', '連續 1 週都做到', '白天不再尿濕褲子'] },
+  { k:'洗澡', re:/洗澡|沐浴|洗頭/, hint:'自己完成哪一部分、保有什麼', scenes:['坐在洗澡椅上自己洗身體前面與手臂，保有洗澡的隱私', '自己洗頭，週末上教會前把自己打理乾淨'], measures:['每次洗澡都做到', '10 分鐘內完成'] },
+  { k:'進食', re:/吃|飯|進食|喝|餐/, hint:'和誰、在什麼場合吃什麼', scenes:['和家人同桌，自己吃完一餐', '自己用湯匙吃完最愛的鹹粥', '在中心午餐時和朋友一起用餐，自己吃完'], measures:['不需他人餵食', '30 分鐘內吃完', '每天午晚餐都做到'] },
+  { k:'穿衣', re:/穿|衣|鞋|襪|打扮/, hint:'為了什麼場合自己穿好', scenes:['每天早上自己穿好衣服，準備來日照', '自己穿上外套與鞋子，出門去散步', '過年時自己換上新衣服拍全家福'], measures:['15 分鐘內完成', '不需他人協助扣釦子'] },
+  { k:'外出', re:/外出|出門|市場|公園|廟|教會|買|搭車|拜拜/, hint:'去哪裡、做什麼', scenes:['從家門口走到巷口市場，買一小袋菜回家', '走到附近的廟裡拜拜', '搭公車去女兒家吃晚飯'], measures:['中途休息不超過 1 次', '每週 2 次', '自己找到回家的路'] },
+  { k:'家務', re:/煮|料理|洗衣|晾|掃|摺|家務|整理|拿手菜/, hint:'幫家人做什麼', scenes:['幫家人煮一道拿手的蕃茄炒蛋', '摺好全家人的衣服放回衣櫃', '早上自己掃客廳的地'], measures:['每週 1 次', '30 分鐘內完成'] },
+  { k:'興趣創作', re:/畫|書法|寫|手工|編織|木工|園藝|種|唱|音樂|樂器/, hint:'做出什麼作品、送給誰或在哪裡展示', scenes:['畫一張生日賀卡送給孫女', '完成一幅書法作品參加中心作品展', '過年前寫春聯送給鄰居', '種一盆香草放在中心窗台照顧'], measures:['完成 1 件作品', '每週參與 2 次', '連續 20 分鐘不需休息'] },
+  { k:'社交', re:/朋友|聊天|麻將|象棋|下棋|聚會|教會|里民/, hint:'和誰、在哪裡、做什麼', scenes:['到公園和老朋友下一盤象棋', '參加社區關懷據點的活動和朋友聊天', '和牌友打一圈麻將'], measures:['每週 2 次', '全程參與不需提早離開'] },
+  { k:'照顧家人', re:/孫|照顧|寵物|狗|貓|家人/, hint:'為家人做什麼', scenes:['幫孫子準備放學點心', '每天餵家裡的狗並帶牠到門口', '陪孫子寫功課 30 分鐘'], measures:['每週 3 次', '不需他人提醒'] },
 ];
-const MEASURE_CHIPS = ['每天 2 次', '中途不休息', '3 次中有 2 次成功', '10 分鐘內完成', '連續 1 週都做到'];
+const goalTypesFor = act => { const hit = GOAL_TYPES.filter(t => t.re.test(act || '')); return hit.length ? hit : null; };
+
 function newGoal(o = {}){ const g = { id:Store.newId(), activity:'', when:'12 週內', how:'', assist:'在旁人監督下（不需碰觸）', scene:'', measure:'', baseline:'', ...o }; g.text = composeGoal(g); return g; }
 function composeGoal(g){
   const act = (g.scene || g.activity || '').trim();
-  const parts = [g.when, (g.how || '').trim(), act ? (g.assist || '') + act : '', (g.measure || '').trim()].filter(Boolean);
+  const parts = [g.when, (g.how || '').trim(), act ? (g.assist || '') + (/^在/.test(act) && g.assist ? '，' : '') + act : '', (g.measure || '').trim()].filter(Boolean);
   g.target = (g.measure || '').trim();
   return act ? parts.join('，') + '。' : '';
 }
 function goalCard(g, i){
-  const hit = SCENES.filter(([, re]) => re.test(g.activity || '')), list = hit.length ? hit : SCENES.slice(0, 3);
-  return `<div class="item-card goal-card"><div class="ic-h"><b>目標 ${i + 1}</b><span class="lbl">想做到的事</span>${F.input(`goals.${i}.activity`, { cls:'grow', ph:'例：自己走到客廳看電視' })}${btn('✕', `S.edit.goals.splice(${i},1);rerender(planHTML)`, { k:'sm ghost', title:'移除' })}</div>
-    <div class="form-grid g3">${F.field('① 時限', F.select(`goals.${i}.when`, GOAL_WHEN, { blank:false }))}${F.field('② 方式／輔具', F.input(`goals.${i}.how`, { ph:'例：使用助行器、扶著牆邊扶手' }))}${F.field('③ 協助程度', F.select(`goals.${i}.assist`, GOAL_ASSIST, { blank:false }))}
-      ${F.field('④ 在真實生活中做什麼（從哪裡到哪裡）', F.input(`goals.${i}.scene`, { ph:'例：從臥室床邊走到客廳沙發' }) + `<div class="pills sm">${list.flatMap(([, , ex]) => ex).map(e => `<button type="button" class="chip" onclick="S.edit.goals[${i}].scene='${e}';S.edit.goals[${i}].text=composeGoal(S.edit.goals[${i}]);S.dirty=true;rerender(planHTML)">${e}</button>`).join('')}</div>`, { cls:'span2' })}
-      ${F.field('⑤ 怎麼算達成（可測量）', F.input(`goals.${i}.measure`, { ph:'例：每天 2 次、中途不休息' }) + `<div class="pills sm">${MEASURE_CHIPS.map(e => `<button type="button" class="chip" onclick="const g=S.edit.goals[${i}];g.measure=g.measure?g.measure+'、${e}':'${e}';g.text=composeGoal(g);S.dirty=true;rerender(planHTML)">${e}</button>`).join('')}</div>`)}
+  const types = goalTypesFor(g.activity);
+  const scenes = types ? types.flatMap(t => t.scenes) : GOAL_TYPES.map(t => t.scenes[0]).slice(0, 8);
+  const measures = [...new Set((types || GOAL_TYPES.slice(0, 3)).flatMap(t => t.measures))].slice(0, 6);
+  const hint = types ? types.map(t => t.hint).join('；') : '在什麼情境、和誰、為了什麼（移動類寫從哪裡到哪裡）';
+  const chip = (e, field, append) => `<button type="button" class="chip" onclick="const g=S.edit.goals[${i}];g.${field}=${append ? `g.${field}?g.${field}+'、'+this.dataset.v:this.dataset.v` : 'this.dataset.v'};g.text=composeGoal(g);S.dirty=true;rerender(planHTML)" data-v="${esc(e)}">${esc(e)}</button>`;
+  return `<div class="item-card goal-card"><div class="ic-h"><b>目標 ${i + 1}</b><span class="lbl">想做到的事</span>${F.input(`goals.${i}.activity`, { cls:'grow', ph:'例：自己走到客廳看電視' })}${types ? `<span class="badge green">${esc(types.map(t => t.k).join('・'))}</span>` : ''}${btn('✕', `S.edit.goals.splice(${i},1);rerender(planHTML)`, { k:'sm ghost', title:'移除' })}</div>
+    <div class="form-grid g3">${F.field('① 時限', F.select(`goals.${i}.when`, GOAL_WHEN, { blank:false }))}${F.field('② 方式／輔具', F.input(`goals.${i}.how`, { ph:'例：使用助行器、加粗握柄的畫筆' }))}${F.field('③ 協助程度', F.select(`goals.${i}.assist`, GOAL_ASSIST, { blank:false }))}
+      ${F.field('④ 在生活中要做到什麼（情境與意義）', F.input(`goals.${i}.scene`, { ph:'例：' + scenes[0] }) + `<div class="pills sm">${scenes.map(e => chip(e, 'scene')).join('')}</div>`, { cls:'span2', hint:'寫成長輩生活中有意義的一件事：' + hint })}
+      ${F.field('⑤ 怎麼算達成（可測量）', F.input(`goals.${i}.measure`, { ph:'例：' + measures[0] }) + `<div class="pills sm">${measures.map(e => chip(e, 'measure', true)).join('')}</div>`)}
       ${F.field('目前狀況', F.input(`goals.${i}.baseline`, { ph:'例：需家人扶著，走到一半要休息' }), { cls:'span2' })}</div>
     <div class="goal-preview"><span class="lbl">目標句</span><span id="gp-${i}">${esc(g.text || '（填寫上方欄位後自動組成目標）')}</span></div></div>`;
 }
@@ -1837,8 +1845,8 @@ function loadDemo(){
     copm:[{ activity:'自己上廁所', area:'自我照顧', imp:10, perf:3, sat:2 }, { activity:'自己走去市場買菜', area:'自我照顧', imp:8, perf:2, sat:2 }, { activity:'畫畫', area:'休閒', imp:6, perf:5, sat:4 }],
     summary:'移位與如廁需少量協助，下肢肌力與平衡不足，跌倒風險高；動機強，以如廁自立與社區步行為目標。' });
   const p1 = put('plans', { id:'dl_p1', clientId:C[0].id, assessmentId:a1.id, version:1, status:'已結束', startDate:ago(86), endDate:ago(3), author:'林○君', role:'物理治療師', problems:a1.problems.map(p => p.text),
-    goals:[newGoal({ id:'g1', activity:'自己上廁所', when:'12 週內', how:'扶著廁所扶手', assist:'在旁人監督下（不需碰觸）', scene:'自己走進廁所、穿脫褲子並完成如廁', measure:'每天 3 次中有 2 次成功', baseline:'需照服員扶持並協助拉褲子（自評表現 3/10）' }),
-      newGoal({ id:'g2', activity:'自己走去市場買菜', when:'12 週內', how:'使用四腳拐', assist:'在旁人監督下（不需碰觸）', scene:'從家門口走到巷口市場（約 200 公尺）', measure:'中途休息不超過 1 次', baseline:'只能在室內走 20 公尺（自評表現 2/10）' })],
+    goals:[newGoal({ id:'g1', activity:'自己上廁所', when:'12 週內', how:'扶著廁所扶手', assist:'在旁人監督下（不需碰觸）', scene:'白天自己去廁所，不再需要包尿布', measure:'每天 3 次中有 2 次成功', baseline:'需照服員扶持並協助拉褲子（自評表現 3/10）' }),
+      newGoal({ id:'g2', activity:'自己走去市場買菜', when:'12 週內', how:'使用四腳拐', assist:'在旁人監督下（不需碰觸）', scene:'從家門口走到巷口市場（約 200 公尺）挑選晚餐要煮的菜', measure:'中途休息不超過 1 次', baseline:'只能在室內走 20 公尺（自評表現 2/10）' })],
     items:[it('i1', 'sit-to-stand', { dose:'8 下 × 2 組' }), it('i2', 'single-leg-stance-supported'), it('i3', 'toilet-transfer', { times:2 }), it('i4', 'button-board', { days:[1, 3, 5] }), it('i5', 'forward-walking-line', { executor:'治療師', days:[2, 4], dose:'20 公尺 × 2 趟' })],
     groups:[{ type:'運動團體', freq:'每週 3 次', note:'' }, { type:'藝術團體', freq:'每週 1 次', note:'喜歡畫畫' }], devices:['馬桶扶手架', '防滑措施'], note:'女兒可於居家每天晚飯後陪同坐站 10 下。' });
   fill(p1, p1.startDate, p1.endDate);
@@ -1851,8 +1859,8 @@ function loadDemo(){
       { goalId:'g2', planId:p1.id, text:p1.goals[1].text, measure:'', baseline:p1.goals[1].baseline, target:p1.goals[1].target, current:'可走到巷口但需休息 2 次', gas:-1, note:'有進步，尚未達成' }],
     summary:'如廁已能在監督下自行完成（目標達成）；坐站、TUG、前後腳站立進步，社區步行仍需加強。修正計畫：如廁改為維持，加強步行耐力與持物步行，為上市場做準備。' });
   const p2 = put('plans', { id:'dl_p1b', clientId:C[0].id, assessmentId:a2.id, version:2, copyOf:p1.id, status:'執行中', startDate:ago(1), endDate:addDays(ago(1), 83), author:'林○君', role:'物理治療師', problems:a2.problems.map(p => p.text),
-    goals:[newGoal({ id:'g2', activity:'自己走去市場買菜', when:'12 週內', how:'使用四腳拐', assist:'可獨立', scene:'從家門口走到巷口市場，買一小袋菜再走回家', measure:'中途休息不超過 1 次', baseline:'可走到巷口但需休息 2 次（自評表現 4/10）' }),
-      newGoal({ id:'g3', activity:'畫畫', when:'8 週內', how:'使用加粗握柄的畫筆', assist:'可獨立', scene:'坐在桌前用右手幫畫作塗色', measure:'連續 15 分鐘', baseline:'右手握筆 5 分鐘就累（自評表現 6/10）' })],
+    goals:[newGoal({ id:'g2', activity:'自己走去市場買菜', when:'12 週內', how:'使用四腳拐', assist:'可獨立', scene:'從家門口走到巷口市場，買一小袋菜回家煮給女兒吃', measure:'中途休息不超過 1 次', baseline:'可走到巷口但需休息 2 次（自評表現 4/10）' }),
+      newGoal({ id:'g3', activity:'畫畫', when:'8 週內', how:'使用加粗握柄的畫筆', assist:'可獨立', scene:'用右手畫一張生日賀卡送給孫女', measure:'完成 1 件作品', baseline:'右手握筆 5 分鐘就累，作品要別人幫忙完成（自評表現 6/10）' })],
     items:[it('i1', 'sit-to-stand', { dose:'10 下 × 3 組' }), it('i6', 'tandem-stance'), it('i7', 'carry-light-object-walk', { days:[1, 3, 5] }), it('i8', 'walking-program', { executor:'治療師', days:[2, 4], dose:'10 分鐘' }), it('i9', 'grip-towel', { days:[1, 3, 5] })],
     groups:[{ type:'運動團體', freq:'每週 3 次', note:'' }, { type:'藝術團體', freq:'每週 1 次', note:'練習右手塗色' }], devices:['防滑措施'], note:'如廁目標已達成，改為維持（照服員持續在旁監督）；新增持物步行為上市場做準備。' });
   fill(p2, p2.startDate, T);
@@ -1864,8 +1872,8 @@ function loadDemo(){
     copm:[{ activity:'和朋友下象棋', area:'休閒', imp:9, perf:'', sat:'' }, { activity:'自己去公園散步', area:'休閒', imp:'', perf:'', sat:'' }],
     summary:'下肢肌力尚可，平衡與定向感需維持；無法穩定自評分數，最想做到的事只記錄活動。' });
   const p3 = put('plans', { id:'dl_p2', clientId:C[1].id, assessmentId:a3.id, version:1, status:'執行中', startDate:ago(38), endDate:addDays(ago(38), 83), author:'陳○宏', role:'職能治療師', problems:a3.problems.map(p => p.text),
-    goals:[newGoal({ id:'g4', activity:'自己去公園散步', when:'12 週內', how:'使用助行器', assist:'在旁人監督下（不需碰觸）', scene:'從中心門口走到隔壁公園繞一圈再走回來', measure:'每週 3 次、全程不迷路', baseline:'需陪同並提示方向' }),
-      newGoal({ id:'g5', activity:'和朋友下象棋', when:'8 週內', how:'', assist:'在口頭提示下', scene:'在中心和其他長輩下完一盤象棋', measure:'每週 2 次', baseline:'下到一半會忘記輪到誰' })],
+    goals:[newGoal({ id:'g4', activity:'自己去公園散步', when:'12 週內', how:'使用助行器', assist:'在旁人監督下（不需碰觸）', scene:'從中心門口走到隔壁公園，和老朋友打招呼再走回來', measure:'每週 3 次、自己找到回來的路', baseline:'需陪同並提示方向' }),
+      newGoal({ id:'g5', activity:'和朋友下象棋', when:'8 週內', how:'', assist:'在口頭提示下', scene:'在中心和老朋友下完一盤象棋', measure:'每週 2 次、全程參與', baseline:'下到一半會忘記輪到誰' })],
     items:[it('i10', 'sit-to-stand', { dose:'10 下 × 2 組' }), it('i11', 'standing-weight-shift'), it('i12', 'cloth-folding', { days:[1, 3, 5] }), it('i13', 'walking-program', { days:[1, 3, 5], dose:'到公園來回約 15 分鐘' })],
     groups:[{ type:'認知團體', freq:'每週 2 次', note:'' }, { type:'懷舊團體', freq:'每週 1 次', note:'喜歡聊務農' }, { type:'運動團體', freq:'每週 3 次', note:'' }], devices:['防走失定位裝置'] });
   fill(p3, p3.startDate, T);
@@ -1878,7 +1886,7 @@ function loadDemo(){
     copm:[{ activity:'自己從輪椅移到椅子', area:'自我照顧', imp:9, perf:3, sat:2 }, { activity:'做木工小物', area:'休閒', imp:6, perf:2, sat:3 }],
     summary:'移位與行走需中度協助，跌倒風險極高；以安全移位為優先，搭配手工藝團體維持手部功能與成就感。' });
   const p4 = put('plans', { id:'dl_p3', clientId:C[2].id, assessmentId:a4.id, version:1, status:'執行中', startDate:ago(4), endDate:addDays(ago(4), 83), author:'林○君', role:'物理治療師', problems:a4.problems.map(p => p.text),
-    goals:[newGoal({ id:'g6', activity:'自己從輪椅移到椅子', when:'12 週內', how:'先坐 30 秒再起身，扶著椅子扶手', assist:'在少量協助下', scene:'從輪椅移到餐桌椅子上吃飯', measure:'每天午餐、晚餐各 1 次', baseline:'需中度協助（自評表現 3/10）' })],
+    goals:[newGoal({ id:'g6', activity:'自己從輪椅移到椅子', when:'12 週內', how:'先坐 30 秒再起身，扶著椅子扶手', assist:'在少量協助下', scene:'從輪椅移到餐桌椅子上，和太太一起吃晚飯', measure:'每天午餐、晚餐各 1 次', baseline:'需中度協助（自評表現 3/10）' })],
     items:[it('i14', 'sit-pivot-transfer', { times:2 }), it('i15', 'sit-to-stand', { dose:'5 下 × 2 組', caution:'起身前先坐 30 秒，頭暈即停' }), it('i16', 'metronome-stepping'), it('i17', 'oral_exercise')],
     groups:[{ type:'手工藝團體', freq:'每週 2 次', note:'木工、手作' }, { type:'社交團體', freq:'每週 1 次', note:'' }], devices:['移位腰帶與人力移位吊帶', '移位滑板'] });
   fill(p4, p4.startDate, T);

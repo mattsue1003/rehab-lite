@@ -276,7 +276,7 @@ function planHTML(){
     ${p.id ? btn('刪除此版本', 'deletePlan()', { k:'danger ghost', i:'trash' }) + btn('結束此計畫', 'endPlan()', { k:'ghost' }) : ''}${btn(p.id ? '儲存' : '儲存並開始執行', 'savePlan()', { k:'primary', i:'check' })}</div>
   <section class="card"><h2>計畫資訊</h2><div class="form-grid g3">${F.field('開始日期', F.date('startDate'), { req:true })}${F.field('結束日期', F.date('endDate'), { req:true, hint:'建議 8–12 週後再評估' })}${F.field('擬定者', F.input('author'), { req:true })}${F.field('職類', F.select('role', PRO_ROLES))}</div></section>
   <section class="card"><h2>需復能的問題與目標</h2>${p.problems.map((x, i) => `<div class="row-edit">${F.input('problems.' + i)}${btn('✕', `S.edit.problems.splice(${i},1);rerender(planHTML)`, { k:'sm ghost' })}</div>`).join('')}${btn('新增問題', `S.edit.problems.push('');rerender(planHTML)`, { k:'sm', i:'plus' })}
-    <h3>復能目標 <small class="muted">以「最想做到的事」為目標，寫出：多久內＋用什麼方式／輔具＋協助程度＋在真實生活中做什麼（從哪裡到哪裡）＋怎麼算達成</small></h3>
+    <h3>復能目標 <small class="muted">以長輩「最想做到的事」為核心，寫成生活中有意義的一件事：多久內＋用什麼方式／輔具＋協助程度＋在什麼情境做到什麼＋怎麼算達成</small></h3>
     ${p.goals.map((g, i) => goalCard(g, i)).join('')}
     ${btn('新增目標', `S.edit.goals.push(newGoal());rerender(planHTML)`, { k:'sm', i:'plus' })}</section>
   <section class="card"><h2>個別介入 <small>運動、日常生活訓練｜會出現在今日勾選與檢核表</small><span class="sp"></span>${btn('從項目庫挑選', 'openPicker()', { k:'primary sm', i:'plus' })}</h2>
@@ -298,31 +298,39 @@ function planHTML(){
 /* ---------- 復能目標（五要素：時限、方式／輔具、協助程度、活動情境、可測量） ---------- */
 const GOAL_WHEN = ['4 週內', '8 週內', '12 週內', '3 個月內', '6 個月內'];
 const GOAL_ASSIST = ['可獨立', '在旁人監督下（不需碰觸）', '在口頭提示下', '在少量協助下', '在中度協助下'];
-const SCENES = [
-  ['移動', /走|移動|散步|客廳|房間/, ['從臥室床邊走到客廳沙發', '從客廳走到廁所', '從房間走到餐桌吃飯']],
-  ['移位', /移位|輪椅|床上|起床|坐起/, ['從床上坐起並移到輪椅', '從輪椅移到馬桶', '從輪椅移到餐桌椅子']],
-  ['如廁', /廁|尿|便/, ['自己走進廁所、穿脫褲子並完成如廁', '夜間自己下床使用床邊便盆椅']],
-  ['洗澡', /洗澡|沐浴/, ['坐在洗澡椅上自己洗身體前面與手臂', '自己跨過浴室門檻進出浴室']],
-  ['進食', /吃|飯|進食/, ['自己吃完一餐碗裡的食物', '自己拿杯子喝完一杯水']],
-  ['穿衣', /穿|衣|鞋|襪/, ['坐在床邊自己穿上衣與褲子', '自己穿脫鞋子']],
-  ['外出', /外出|出門|市場|公園|散步|廟|教會|買/, ['從家門口走到巷口便利商店', '從家門口走到社區據點', '自己走到公園繞一圈']],
-  ['樓梯', /樓梯|上樓|下樓/, ['扶扶手上下家門口的 3 階樓梯', '自己上下一層樓梯回家']],
-  ['家務', /煮|菜|洗衣|晾|掃|家務/, ['站在流理台前洗菜、切菜 10 分鐘', '把洗好的衣服晾到陽台衣架上']],
+/* 目標範例：依活動類型給「生活情境＋意義」與對應的可測量方式（復能精神：在真實生活中、為了想做的事） */
+const GOAL_TYPES = [
+  { k:'移動', re:/走|移動|散步|客廳|房間|看電視/, hint:'從哪裡到哪裡、去做什麼', scenes:['從臥室走到客廳，和家人一起看電視', '從房間走到餐廳，和大家一起吃午餐', '從床邊走到窗邊，看看外面的天氣'], measures:['中途不休息', '每天 2 次', '不需他人扶持'] },
+  { k:'移位', re:/移位|輪椅|床上|起床|坐起|沙發/, hint:'從哪裡移到哪裡、為了做什麼', scenes:['從輪椅移到沙發上，陪孫子看卡通', '早上自己從床上坐起移到輪椅，準備參加早操', '從輪椅移到餐桌椅子上，和家人一起吃飯'], measures:['每天 2 次', '3 次中有 2 次成功', '不需他人抬起'] },
+  { k:'如廁', re:/廁|尿|便/, hint:'在什麼情境下自己完成、對長輩的意義', scenes:['白天自己去廁所，不再需要包尿布', '出門參加活動時，能自己使用外面的廁所', '夜間自己下床使用床邊便盆椅，不必叫醒家人'], measures:['每天 3 次中有 2 次成功', '連續 1 週都做到', '白天不再尿濕褲子'] },
+  { k:'洗澡', re:/洗澡|沐浴|洗頭/, hint:'自己完成哪一部分、保有什麼', scenes:['坐在洗澡椅上自己洗身體前面與手臂，保有洗澡的隱私', '自己洗頭，週末上教會前把自己打理乾淨'], measures:['每次洗澡都做到', '10 分鐘內完成'] },
+  { k:'進食', re:/吃|飯|進食|喝|餐/, hint:'和誰、在什麼場合吃什麼', scenes:['和家人同桌，自己吃完一餐', '自己用湯匙吃完最愛的鹹粥', '在中心午餐時和朋友一起用餐，自己吃完'], measures:['不需他人餵食', '30 分鐘內吃完', '每天午晚餐都做到'] },
+  { k:'穿衣', re:/穿|衣|鞋|襪|打扮/, hint:'為了什麼場合自己穿好', scenes:['每天早上自己穿好衣服，準備來日照', '自己穿上外套與鞋子，出門去散步', '過年時自己換上新衣服拍全家福'], measures:['15 分鐘內完成', '不需他人協助扣釦子'] },
+  { k:'外出', re:/外出|出門|市場|公園|廟|教會|買|搭車|拜拜/, hint:'去哪裡、做什麼', scenes:['從家門口走到巷口市場，買一小袋菜回家', '走到附近的廟裡拜拜', '搭公車去女兒家吃晚飯'], measures:['中途休息不超過 1 次', '每週 2 次', '自己找到回家的路'] },
+  { k:'家務', re:/煮|料理|洗衣|晾|掃|摺|家務|整理|拿手菜/, hint:'幫家人做什麼', scenes:['幫家人煮一道拿手的蕃茄炒蛋', '摺好全家人的衣服放回衣櫃', '早上自己掃客廳的地'], measures:['每週 1 次', '30 分鐘內完成'] },
+  { k:'興趣創作', re:/畫|書法|寫|手工|編織|木工|園藝|種|唱|音樂|樂器/, hint:'做出什麼作品、送給誰或在哪裡展示', scenes:['畫一張生日賀卡送給孫女', '完成一幅書法作品參加中心作品展', '過年前寫春聯送給鄰居', '種一盆香草放在中心窗台照顧'], measures:['完成 1 件作品', '每週參與 2 次', '連續 20 分鐘不需休息'] },
+  { k:'社交', re:/朋友|聊天|麻將|象棋|下棋|聚會|教會|里民/, hint:'和誰、在哪裡、做什麼', scenes:['到公園和老朋友下一盤象棋', '參加社區關懷據點的活動和朋友聊天', '和牌友打一圈麻將'], measures:['每週 2 次', '全程參與不需提早離開'] },
+  { k:'照顧家人', re:/孫|照顧|寵物|狗|貓|家人/, hint:'為家人做什麼', scenes:['幫孫子準備放學點心', '每天餵家裡的狗並帶牠到門口', '陪孫子寫功課 30 分鐘'], measures:['每週 3 次', '不需他人提醒'] },
 ];
-const MEASURE_CHIPS = ['每天 2 次', '中途不休息', '3 次中有 2 次成功', '10 分鐘內完成', '連續 1 週都做到'];
+const goalTypesFor = act => { const hit = GOAL_TYPES.filter(t => t.re.test(act || '')); return hit.length ? hit : null; };
+
 function newGoal(o = {}){ const g = { id:Store.newId(), activity:'', when:'12 週內', how:'', assist:'在旁人監督下（不需碰觸）', scene:'', measure:'', baseline:'', ...o }; g.text = composeGoal(g); return g; }
 function composeGoal(g){
   const act = (g.scene || g.activity || '').trim();
-  const parts = [g.when, (g.how || '').trim(), act ? (g.assist || '') + act : '', (g.measure || '').trim()].filter(Boolean);
+  const parts = [g.when, (g.how || '').trim(), act ? (g.assist || '') + (/^在/.test(act) && g.assist ? '，' : '') + act : '', (g.measure || '').trim()].filter(Boolean);
   g.target = (g.measure || '').trim();
   return act ? parts.join('，') + '。' : '';
 }
 function goalCard(g, i){
-  const hit = SCENES.filter(([, re]) => re.test(g.activity || '')), list = hit.length ? hit : SCENES.slice(0, 3);
-  return `<div class="item-card goal-card"><div class="ic-h"><b>目標 ${i + 1}</b><span class="lbl">想做到的事</span>${F.input(`goals.${i}.activity`, { cls:'grow', ph:'例：自己走到客廳看電視' })}${btn('✕', `S.edit.goals.splice(${i},1);rerender(planHTML)`, { k:'sm ghost', title:'移除' })}</div>
-    <div class="form-grid g3">${F.field('① 時限', F.select(`goals.${i}.when`, GOAL_WHEN, { blank:false }))}${F.field('② 方式／輔具', F.input(`goals.${i}.how`, { ph:'例：使用助行器、扶著牆邊扶手' }))}${F.field('③ 協助程度', F.select(`goals.${i}.assist`, GOAL_ASSIST, { blank:false }))}
-      ${F.field('④ 在真實生活中做什麼（從哪裡到哪裡）', F.input(`goals.${i}.scene`, { ph:'例：從臥室床邊走到客廳沙發' }) + `<div class="pills sm">${list.flatMap(([, , ex]) => ex).map(e => `<button type="button" class="chip" onclick="S.edit.goals[${i}].scene='${e}';S.edit.goals[${i}].text=composeGoal(S.edit.goals[${i}]);S.dirty=true;rerender(planHTML)">${e}</button>`).join('')}</div>`, { cls:'span2' })}
-      ${F.field('⑤ 怎麼算達成（可測量）', F.input(`goals.${i}.measure`, { ph:'例：每天 2 次、中途不休息' }) + `<div class="pills sm">${MEASURE_CHIPS.map(e => `<button type="button" class="chip" onclick="const g=S.edit.goals[${i}];g.measure=g.measure?g.measure+'、${e}':'${e}';g.text=composeGoal(g);S.dirty=true;rerender(planHTML)">${e}</button>`).join('')}</div>`)}
+  const types = goalTypesFor(g.activity);
+  const scenes = types ? types.flatMap(t => t.scenes) : GOAL_TYPES.map(t => t.scenes[0]).slice(0, 8);
+  const measures = [...new Set((types || GOAL_TYPES.slice(0, 3)).flatMap(t => t.measures))].slice(0, 6);
+  const hint = types ? types.map(t => t.hint).join('；') : '在什麼情境、和誰、為了什麼（移動類寫從哪裡到哪裡）';
+  const chip = (e, field, append) => `<button type="button" class="chip" onclick="const g=S.edit.goals[${i}];g.${field}=${append ? `g.${field}?g.${field}+'、'+this.dataset.v:this.dataset.v` : 'this.dataset.v'};g.text=composeGoal(g);S.dirty=true;rerender(planHTML)" data-v="${esc(e)}">${esc(e)}</button>`;
+  return `<div class="item-card goal-card"><div class="ic-h"><b>目標 ${i + 1}</b><span class="lbl">想做到的事</span>${F.input(`goals.${i}.activity`, { cls:'grow', ph:'例：自己走到客廳看電視' })}${types ? `<span class="badge green">${esc(types.map(t => t.k).join('・'))}</span>` : ''}${btn('✕', `S.edit.goals.splice(${i},1);rerender(planHTML)`, { k:'sm ghost', title:'移除' })}</div>
+    <div class="form-grid g3">${F.field('① 時限', F.select(`goals.${i}.when`, GOAL_WHEN, { blank:false }))}${F.field('② 方式／輔具', F.input(`goals.${i}.how`, { ph:'例：使用助行器、加粗握柄的畫筆' }))}${F.field('③ 協助程度', F.select(`goals.${i}.assist`, GOAL_ASSIST, { blank:false }))}
+      ${F.field('④ 在生活中要做到什麼（情境與意義）', F.input(`goals.${i}.scene`, { ph:'例：' + scenes[0] }) + `<div class="pills sm">${scenes.map(e => chip(e, 'scene')).join('')}</div>`, { cls:'span2', hint:'寫成長輩生活中有意義的一件事：' + hint })}
+      ${F.field('⑤ 怎麼算達成（可測量）', F.input(`goals.${i}.measure`, { ph:'例：' + measures[0] }) + `<div class="pills sm">${measures.map(e => chip(e, 'measure', true)).join('')}</div>`)}
       ${F.field('目前狀況', F.input(`goals.${i}.baseline`, { ph:'例：需家人扶著，走到一半要休息' }), { cls:'span2' })}</div>
     <div class="goal-preview"><span class="lbl">目標句</span><span id="gp-${i}">${esc(g.text || '（填寫上方欄位後自動組成目標）')}</span></div></div>`;
 }
