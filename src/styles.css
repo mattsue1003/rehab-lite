@@ -337,3 +337,13 @@ table.copm td:nth-child(2){min-width:220px;white-space:normal}
 .done-goals .row-edit{justify-content:space-between;margin:4px 0}
 .noimg-l{display:flex!important;flex-direction:column;gap:4px;align-items:center;justify-content:center;color:var(--pri);background:repeating-linear-gradient(135deg,var(--surface2),var(--surface2) 10px,var(--pri-l) 10px,var(--pri-l) 20px)!important}
 .noimg-l small{font-size:12px;color:var(--muted)}
+/* 今日勾選：記錄確認 */
+.t-rec{display:block;font-size:12.5px;color:var(--muted);margin-top:2px}.tile.s-ok .t-rec b{color:var(--ok)}.tile.s-part .t-rec b{color:var(--warn)}.tile.s-skip .t-rec b{color:var(--err)}
+.tile:not([class*="s-"]) .t-st{border-style:dashed}
+.card-prog{color:var(--muted);font-size:14px}.card-prog b{color:var(--text);font-size:17px}
+.card-done{display:inline-block;background:var(--ok);color:#fff;font-weight:700;font-size:14px;padding:4px 12px;border-radius:999px}
+.tcard:has(.card-done){border-color:var(--ok);box-shadow:0 0 0 2px var(--ok-l)}
+.today-sum{display:flex;flex-direction:column;gap:4px}.today-sum .big{font-size:22px;color:var(--pri-d)}.ts-meta{font-size:14px}
+.toast.ok{background:var(--pri-d);color:#fff}.toast{display:flex;gap:12px;align-items:center}
+.toast-btn{background:#fff;color:var(--pri-d);border:0;border-radius:8px;padding:5px 12px;font:inherit;font-weight:700;cursor:pointer}
+.side-foot .btn{white-space:normal;text-align:left;line-height:1.35;height:auto;max-width:100%}

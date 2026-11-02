@@ -33,19 +33,25 @@ const Store = (() => {
   }
 
   function touch(c){ dirty.add(c); clearTimeout(timer); timer = setTimeout(flush, 120); }
+  let lastSaved = null;
   function flush(){
-    const cols = [...dirty]; dirty.clear();
+    const cols = [...dirty]; dirty.clear(); clearTimeout(timer);
+    let done;
     if (idb) {
-      try {
-        const tx = idb.transaction('kv','readwrite'), st = tx.objectStore('kv');
-        cols.forEach(c => st.put(DB[c], c));
-        tx.onerror = () => App.toast('資料儲存失敗，請立即匯出備份', 'err');
-      } catch(e){ App.toast('資料儲存失敗：'+e.message, 'err'); }
+      done = new Promise(res => {
+        try {
+          const tx = idb.transaction('kv','readwrite'), st = tx.objectStore('kv');
+          cols.forEach(c => st.put(DB[c], c));
+          tx.oncomplete = () => { lastSaved = new Date(); res(true); };
+          tx.onerror = tx.onabort = () => { App.toast('資料儲存失敗，請立即匯出備份', 'err'); res(false); };
+        } catch(e){ App.toast('資料儲存失敗：'+e.message, 'err'); res(false); }
+      });
     } else {
-      try { cols.forEach(c => localStorage.setItem('rehabl:'+c, JSON.stringify(DB[c]))); }
-      catch(e){ App.toast('瀏覽器儲存空間不足，請匯出備份', 'err'); }
+      try { cols.forEach(c => localStorage.setItem('rehabl:'+c, JSON.stringify(DB[c]))); lastSaved = new Date(); done = Promise.resolve(true); }
+      catch(e){ App.toast('瀏覽器儲存空間不足，請匯出備份', 'err'); done = Promise.resolve(false); }
     }
     if (cols.some(c => c !== 'meta') && typeof onStoreFlush === 'function') onStoreFlush();
+    return done;
   }
   // 存放非 JSON 物件（例如資料夾授權 handle）
   function rawGet(k){ return idb ? idbGet(k) : Promise.resolve(null); }
@@ -85,5 +91,5 @@ const Store = (() => {
   }
   function clearAll(){ COLLECTIONS.forEach(c => { DB[c] = []; touch(c); }); DB.meta = {}; touch('meta'); }
 
-  return { DB, load, all, get, upsert, remove, setMeta, exportAll, mergeImport, clearAll, newId, flush, rawGet, rawSet };
+  return { DB, load, all, get, upsert, remove, setMeta, exportAll, mergeImport, clearAll, newId, flush, rawGet, rawSet, get lastSaved(){ return lastSaved; } };
 })();

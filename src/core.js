@@ -69,7 +69,13 @@ const badge = (t, k = '') => `<span class="badge ${k}">${esc(t)}</span>`;
 const empty = (t, btn = '') => `<div class="empty"><p>${t}</p>${btn}</div>`;
 function btn(label, onclick, o = {}){ return `<button type="button" class="btn ${o.k||''}" onclick="${esc(onclick)}" ${o.title?`title="${esc(o.title)}"`:''}>${o.i?icon(o.i, 16):''}<span>${label}</span></button>`; }
 
-function toast(msg, kind = ''){ const t = document.createElement('div'); t.className = 'toast ' + kind; t.textContent = msg; $('#toasts').appendChild(t); setTimeout(() => t.classList.add('show'), 10); setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, kind === 'err' ? 6000 : 2600); }
+function toast(msg, kind = '', action){
+  if (action) document.querySelectorAll('#toasts .toast.act').forEach(x => x.remove());
+  const t = document.createElement('div'); t.className = 'toast ' + kind + (action ? ' act' : ''); t.textContent = msg;
+  if (action) { const b = document.createElement('button'); b.type = 'button'; b.className = 'toast-btn'; b.textContent = action.label; b.onclick = () => { action.fn(); t.remove(); }; t.appendChild(b); }
+  $('#toasts').appendChild(t); setTimeout(() => t.classList.add('show'), 10);
+  setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, action ? 6000 : kind === 'err' ? 6000 : 2600);
+}
 
 /* 對話框：openModal(title, html, {onSave, saveLabel, wide}) */
 let modalCfg = null;

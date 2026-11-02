@@ -41,16 +41,33 @@ function pageToday(){
     const its = p.items.filter(it => scheduled(p, it, d)); const st = its.map(it => curStatus(p.id, it.id, d));
     tot += its.length; done += st.filter(Boolean).length;
     return `<article class="tcard" id="tc-${c.id}"><header><div class="av">${esc(c.name.slice(0, 1))}</div><div class="tn"><b>${esc(c.name)}</b><small>${esc([isRes() ? c.bed : '', c.caution].filter(Boolean).join('・'))}</small></div>
-      <span class="muted">${st.filter(Boolean).length}/${its.length}</span>${btn('全部完成', `allDone('${p.id}','${d}')`, { k:'sm' })}</header>
-      <div class="tiles">${its.map((it, i) => { const s = st[i]; return `<button class="tile ${s ? 's-' + s : ''}" onclick="tapTile('${p.id}','${it.id}','${d}')">${thumb(it.img)}<span class="t-txt"><b>${esc(it.name)}</b><small>${esc(it.dose || '')}${it.times > 1 ? `｜每日 ${it.times} 次` : ''}</small></span><span class="t-st">${s ? SYM[s] : ''}</span></button>`; }).join('')}</div></article>`;
+      ${st.every(Boolean) ? '<span class="card-done">✓ 今日全部已記錄</span>' : `<span class="card-prog">已記錄 <b>${st.filter(Boolean).length}</b>／${its.length}</span>${btn('其餘全部完成', `allDone('${p.id}','${d}')`, { k:'sm' })}`}</header>
+      <div class="tiles">${its.map((it, i) => { const s = st[i], r = s ? checkRec(p.id, it.id, d) : null; return `<button class="tile ${s ? 's-' + s : ''}" onclick="tapTile('${p.id}','${it.id}','${d}')" aria-label="${esc(it.name)}：${s ? ST_LABEL[s] : '尚未記錄'}">${thumb(it.img)}<span class="t-txt"><b>${esc(it.name)}</b><small>${esc(it.dose || '')}${it.times > 1 ? `｜每日 ${it.times} 次` : ''}</small><span class="t-rec">${s ? `<b>${SYM[s]} ${ST_LABEL[s]}</b> · ${esc(hhmm(r?.updatedAt))}${r?.by ? ' ' + esc(r.by) : ''}` : '尚未記錄'}</span></span><span class="t-st">${s ? SYM[s] : ''}</span></button>`; }).join('')}</div></article>`;
   }).join('');
   return `<div class="toolbar"><button class="btn" onclick="S.day=addDays('${d}',-1);route()">${icon('back', 16)}前一天</button><input type="date" class="inp" value="${d}" onchange="S.day=this.value;route()" aria-label="日期"><button class="btn" onclick="S.day=addDays('${d}',1);route()">後一天</button>${d !== todayISO() ? btn('回到今天', 'S.day=null;route()') : ''}
     <span class="sp"></span><input class="inp" placeholder="搜尋姓名${isRes() ? '／床號' : ''}" value="${esc(todayQ)}" onchange="todayQ=this.value;route()" aria-label="搜尋"></div>
-  <div class="notice">點一下＝<b class="c-ok">✓ 完成</b>，再點＝<b class="c-part">△ 部分</b>，再點＝<b class="c-skip">✕ 未執行</b>，再點＝取消。今日已記錄 <b>${done}/${tot}</b>　記錄者：<b>${esc(App.currentUserId() || '（請於右上角填寫）')}</b></div>
+  <div class="notice today-sum"><div><b class="big">${done}／${tot}</b> 項已記錄${tot && done === tot ? '　<span class="card-done">✓ 今天全部記錄完成</span>' : ''}</div>
+    <div class="ts-meta">${Store.lastSaved ? `💾 已儲存於這台電腦 ${hhmm(Store.lastSaved.toISOString())}` : '💾 每次點選都會立即儲存'}${Folder.supported ? (Folder.ready ? '　📁 資料夾自動備份中' : Folder.connected ? '　<span class="warn-t">⚠ 資料夾自動備份未啟用，請按左下角「重新連接資料夾」</span>' : '') : ''}　記錄者：<b>${esc(App.currentUserId() || '（請於右上角填寫）')}</b></div>
+    <div class="ts-meta">點一下＝<b class="c-ok">✓ 完成</b>，再點＝<b class="c-part">△ 部分</b>，再點＝<b class="c-skip">✕ 未執行</b>，再點＝取消；點錯可按下方訊息的「復原」。</div></div>
   <div class="tgrid">${cards || empty(`今天沒有排定的個別介入項目。請先為${term()}開立介入計畫。`, `<a class="btn primary" href="#/clients">前往${term()}名單</a>`)}</div>`;
 }
-function tapTile(planId, itemId, d){ setCheck(planId, itemId, d, NEXT[curStatus(planId, itemId, d)]); refreshCard(Store.get('plans', planId).clientId); }
-function allDone(planId, d){ const p = Store.get('plans', planId); p.items.filter(it => scheduled(p, it, d)).forEach(it => { if (!curStatus(p.id, it.id, d)) setCheck(p.id, it.id, d, 'ok'); }); refreshCard(p.clientId); toast('已全部勾選完成'); }
+const ST_LABEL = { ok:'完成', part:'部分完成', skip:'未執行' };
+const hhmm = iso => { if (!iso) return ''; const t = new Date(iso); return String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0'); };
+const checkRec = (planId, itemId, d) => { const cid = Store.get('plans', planId)?.clientId; return Store.all('checks').find(x => x.clientId === cid && x.itemId === itemId && x.date === d); };
+async function tapTile(planId, itemId, d){
+  const p = Store.get('plans', planId), it = p.items.find(x => x.id === itemId), c = Store.get('clients', p.clientId);
+  const prev = curStatus(planId, itemId, d), next = NEXT[prev];
+  setCheck(planId, itemId, d, next); refreshCard(p.clientId);
+  const ok = await Store.flush(); refreshCard(p.clientId);
+  if (!ok) return;
+  toast(`已儲存：${c.name}・${it.name} → ${next ? SYM[next] + ' ' + ST_LABEL[next] : '已取消記錄'}`, 'ok', { label:'復原', fn:async () => { setCheck(planId, itemId, d, prev); await Store.flush(); refreshCard(p.clientId); toast(`已復原：${it.name} → ${prev ? ST_LABEL[prev] : '尚未記錄'}`, 'ok'); } });
+}
+async function allDone(planId, d){
+  const p = Store.get('plans', planId), c = Store.get('clients', p.clientId);
+  const todo = p.items.filter(it => scheduled(p, it, d) && !curStatus(p.id, it.id, d));
+  todo.forEach(it => setCheck(p.id, it.id, d, 'ok')); refreshCard(p.clientId);
+  if (await Store.flush()) { refreshCard(p.clientId); toast(`已儲存：${c.name} 其餘 ${todo.length} 項標記為 ✓ 完成`, 'ok', { label:'復原', fn:async () => { todo.forEach(it => setCheck(p.id, it.id, d, '')); await Store.flush(); refreshCard(p.clientId); toast('已復原', 'ok'); } }); }
+}
 function refreshCard(cid){ const t = document.createElement('div'); t.innerHTML = pageToday(); const n = t.querySelector('#tc-' + cid), o = document.getElementById('tc-' + cid); if (n && o) o.replaceWith(n); const nn = t.querySelector('.notice'), on = document.querySelector('#main .notice'); if (nn && on) on.replaceWith(nn); }
 
 /* ---------------- 個案名冊 ---------------- */
