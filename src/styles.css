@@ -347,3 +347,12 @@ table.copm td:nth-child(2){min-width:220px;white-space:normal}
 .toast.ok{background:var(--pri-d);color:#fff}.toast{display:flex;gap:12px;align-items:center}
 .toast-btn{background:#fff;color:var(--pri-d);border:0;border-radius:8px;padding:5px 12px;font:inherit;font-weight:700;cursor:pointer}
 .side-foot .btn{white-space:normal;text-align:left;line-height:1.35;height:auto;max-width:100%}
+/* 流程列與評鑑表單 */
+.flow{padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.flow-steps{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.flow-steps .fs{padding:4px 12px;border-radius:999px;background:var(--surface2);color:var(--muted);font-size:14px}
+.flow-steps .fs.done{background:var(--ok-l);color:var(--ok)}.flow-steps .fs.cur{background:var(--pri);color:#fff;font-weight:700}
+.flow-steps .fa{color:var(--line)}
+.flow-act{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.form-row .fr-h{display:flex;gap:12px;align-items:flex-start}.form-row .fr-h h2{margin:0}.form-row .fr-h .hint{margin:2px 0 6px}
+.form-row .sn{flex:none}

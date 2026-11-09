@@ -356,6 +356,15 @@ table.copm td:nth-child(2){min-width:220px;white-space:normal}
 .toast.ok{background:var(--pri-d);color:#fff}.toast{display:flex;gap:12px;align-items:center}
 .toast-btn{background:#fff;color:var(--pri-d);border:0;border-radius:8px;padding:5px 12px;font:inherit;font-weight:700;cursor:pointer}
 .side-foot .btn{white-space:normal;text-align:left;line-height:1.35;height:auto;max-width:100%}
+/* 流程列與評鑑表單 */
+.flow{padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.flow-steps{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.flow-steps .fs{padding:4px 12px;border-radius:999px;background:var(--surface2);color:var(--muted);font-size:14px}
+.flow-steps .fs.done{background:var(--ok-l);color:var(--ok)}.flow-steps .fs.cur{background:var(--pri);color:#fff;font-weight:700}
+.flow-steps .fa{color:var(--line)}
+.flow-act{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.form-row .fr-h{display:flex;gap:12px;align-items:flex-start}.form-row .fr-h h2{margin:0}.form-row .fr-h .hint{margin:2px 0 6px}
+.form-row .sn{flex:none}
 
 </style>
 </head>
@@ -1228,6 +1237,124 @@ function indivCheckDoc(pl, o){
     { t:'p', text:'備註（未執行原因、反應、異常狀況）：\n' + (note || blankLines(o.mode === 'month' ? 2 : 3)) }] };
 }
 
+/* ---- reports.js ---- */
+/* ================================================================
+   評鑑用報告：初評與復能計畫表、再評估與成效報告、復能結案報告
+   （皆可輸出 PDF／Word／PPT）
+   ================================================================ */
+const CLOSE_REASONS = ['目標達成', '功能穩定，轉為維持', '轉介其他服務', '住院或身體狀況改變', '搬遷或停止服務', '死亡', '其他'];
+const METRICS = [
+  ['巴氏量表（分）', a => { const b = scoreBarthel(a); return b && !b.partial ? b.total : null; }, 'up'],
+  ['IADL（/8）', a => scoreIADL(a)?.total ?? null, 'up'],
+  ['起身行走 TUG（秒）', a => num(a.phy?.tug), 'down'],
+  ['30 秒坐站（次）', a => num(a.phy?.cs30), 'up'],
+  ['握力（公斤）', a => num(a.phy?.grip), 'up'],
+  ['單腳站立（秒）', a => num(a.phy?.oneLeg), 'up'],
+  ['前後腳站立（秒）', a => num(a.phy?.tandem), 'up'],
+  ['步行速度（公尺/秒）', a => gaitSpeed(a), 'up'],
+  ['SPMSQ 錯題數', a => { const s = scoreSPMSQ(a); return s && !s.partial ? s.errors : null; }, 'down'],
+  ['疼痛（0–10）', a => num(a.pain?.nrs), 'down'],
+];
+function num(v){ return v === '' || v == null || isNaN(+v) ? null : +v; }
+function changeText(a, b, dir){
+  if (a == null || b == null) return '';
+  const d = Math.round((b - a) * 100) / 100; if (!d) return '持平';
+  const good = dir === 'up' ? d > 0 : d < 0;
+  return `${d > 0 ? '+' : ''}${d}　${good ? '進步' : '退步'}`;
+}
+function metricTable(prev, cur, l1, l2){
+  const rows = METRICS.map(([n, f, dir]) => [n, f(prev), f(cur), dir]).filter(r => r[1] != null || r[2] != null).map(([n, x, y, dir]) => [n, x ?? '—', y ?? '—', changeText(x, y, dir)]);
+  return { t:'table', head:['項目', l1, l2, '變化'], widths:[3, 1.5, 1.5, 2], center:[1, 2, 3], rows:rows.length ? rows : [['（無資料）', '', '', '']] };
+}
+function copmTable(prev, cur, l1, l2){
+  const rows = copmRows(cur).map(x => { const o = prev && copmRows(prev).find(y => y.activity === x.activity); const d = o && num(o.perf) != null && num(x.perf) != null ? +x.perf - +o.perf : null;
+    return [x.activity, o ? (o.perf ?? '—') : '—', x.perf ?? '—', o ? (o.sat ?? '—') : '—', x.sat ?? '—', d == null ? (o ? '' : '新增') : `${d > 0 ? '+' : ''}${d}${d >= 2 ? '　有意義進步' : ''}`]; });
+  return rows.length ? { t:'table', head:['最想做到的事', `${l1}表現`, `${l2}表現`, `${l1}滿意`, `${l2}滿意`, '表現變化'], widths:[3.4, 1, 1, 1, 1, 1.8], center:[1, 2, 3, 4], rows } : { t:'p', text:'（未填寫）' };
+}
+function gasLabel(v){ return v === '' || v == null ? '未評' : (GAS.find(x => x[0] === +v) || ['', ''])[1]; }
+function itemStats(pl, from, to){
+  const recs = new Map(Store.all('checks').filter(x => x.clientId === pl.clientId).map(x => [x.itemId + '|' + x.date, x]));
+  const s = from > pl.startDate ? from : pl.startDate, e = [to, pl.endDate, todayISO()].sort()[0];
+  return (pl.items || []).map(it => { let exp = 0, ok = 0, part = 0, skip = 0;
+    for (let d = s; d <= e; d = addDays(d, 1)) if ((it.days || []).includes(weekday(d))) { exp++; const r = recs.get(it.id + '|' + d)?.status; if (r === 'ok') ok++; else if (r === 'part') part++; else if (r === 'skip') skip++; }
+    return { name:it.name, exp, ok, part, skip, rate:exp ? Math.round((ok + part * 0.5) / exp * 100) : null }; });
+}
+function execBlocks(plans, from, to){
+  const out = []; let E = 0, O = 0, P = 0, K = 0;
+  for (const pl of plans) {
+    const st = itemStats(pl, from, to).filter(x => x.exp); if (!st.length) continue;
+    st.forEach(x => { E += x.exp; O += x.ok; P += x.part; K += x.skip; });
+    out.push({ t:'table', head:[`計畫 v${pl.version} 項目`, '應執行', '完成', '部分', '未執行', '執行率'], widths:[3.4, 1, 1, 1, 1, 1.2], center:[1, 2, 3, 4, 5], rows:st.map(x => [x.name, x.exp, x.ok, x.part, x.skip, x.rate == null ? '—' : x.rate + '%']) });
+  }
+  out.unshift({ t:'p', text:E ? `期間應執行 ${E} 次：完成 ${O}、部分 ${P}、未執行 ${K}、未記錄 ${E - O - P - K}；整體執行率 ${Math.round((O + P * 0.5) / E * 100)}%。` : '期間沒有個別介入的執行紀錄。' });
+  return out;
+}
+function planOf(a){ return Logic.plansOf(a.clientId).find(p => p.assessmentId === a.id) || null; }
+function planBodyBlocks(pl, compact){
+  const blocks = [{ t:'kv', rows:[['計畫期間', `${rocDate(pl.startDate)} ～ ${rocDate(pl.endDate)}`], ['擬定者', `${pl.author || ''}${pl.role ? '（' + pl.role + '）' : ''}`]] }];
+  if ((pl.goals || []).length) blocks.push({ t:'table', head:['#', '復能目標（時限＋方式＋協助程度＋生活情境與意義＋可測量）', '目前狀況'], widths:[0.4, 6.4, 2.6], center:[0], rows:pl.goals.map((g, i) => [i + 1, g.text, g.baseline || '']) });
+  if ((pl.items || []).length) blocks.push(compact ? { t:'table', head:['個別介入項目', '類型', '劑量', '頻率', '執行者'], widths:[2.6, 1.3, 1.8, 2, 1.3], rows:pl.items.map(it => [it.name, it.type || '', it.dose || '', freqText(it), it.executor || '']) } : { t:'items', items:planItems(pl) });
+  if ((pl.groups || []).length) blocks.push({ t:'table', head:['團體介入', '頻率', '備註'], widths:[2, 2, 5], rows:pl.groups.map(g => [g.type, g.freq || '', g.note || '']) });
+  if ((pl.devices || []).length) blocks.push({ t:'p', text:'建議評估輔具：' + pl.devices.join('、') });
+  return blocks;
+}
+
+/* ---------- ① 初評與復能計畫表 ---------- */
+function initialDoc(a){
+  const c = Store.get('clients', a.clientId), doc = assessDoc(a, c), pl = planOf(a);
+  doc.blocks = doc.blocks.filter(b => b.t !== 'sign');
+  doc.blocks.push({ t:'h', text:'復能計畫（依本次評估擬定）' }, ...(pl ? planBodyBlocks(pl, false) : [{ t:'p', text:'（尚未依本次評估開立計畫）' }]));
+  doc.blocks.push({ t:'sign', items:['評估者', '計畫擬定者', `${term()}／家屬`, '督導'] });
+  return { ...doc, title:'初評與復能計畫表', sub:`${c.name}｜評估 ${rocDate(a.date)}` };
+}
+
+/* ---------- ② 再評估與成效報告 ---------- */
+function reassessDoc(a){
+  const c = Store.get('clients', a.clientId), as = Logic.assessmentsOf(c.id);
+  const prev = as.filter(x => x.id !== a.id && x.date <= a.date).at(-1);
+  const plans = Logic.plansOf(c.id).filter(p => prev ? p.startDate <= a.date && p.endDate >= prev.date : p.startDate <= a.date);
+  const newPl = planOf(a);
+  const blocks = [clientKV(c, [['再評日期', rocDate(a.date)], ['前次評估', prev ? `${rocDate(prev.date)} ${prev.type}` : '—'], ['評估者', `${a.assessor || ''}${a.role ? '（' + a.role + '）' : ''}`]]),
+    { t:'h', text:'一、功能變化' }, metricTable(prev, a, '前次', '本次'),
+    { t:'h', text:'二、最想做到的事（長輩自評 1–10）' }, copmTable(prev, a, '前次', '本次'),
+    { t:'h', text:'三、前次計畫目標達成（GAS）' },
+    (a.goalReview || []).length ? { t:'table', head:['計畫目標', '目前狀況（前次）', '本次現況', 'GAS', '說明'], widths:[3.6, 1.8, 1.8, 1.6, 1.8], rows:a.goalReview.map(g => [g.text, g.baseline || '', g.current || '', gasLabel(g.gas), g.note || '']) } : { t:'p', text:'（本次未評定）' },
+    { t:'h', text:'四、介入執行情形' }, ...execBlocks(plans, prev ? prev.date : (plans[0]?.startDate || a.date), a.date),
+    { t:'h', text:'五、評估摘要' }, { t:'p', text:a.summary || '（未填寫）' },
+    { t:'h', text:'六、修正後計畫' }, ...(newPl ? planBodyBlocks(newPl, true) : [{ t:'p', text:'（尚未依本次評估修正計畫）' }]),
+    { t:'sign', items:['評估者', '督導', `${term()}／家屬`] }];
+  return { title:'再評估與成效報告', sub:`${c.name}｜${prev ? rocDate(prev.date) + ' → ' : ''}${rocDate(a.date)}`, blocks };
+}
+
+/* ---------- ③ 復能結案報告 ---------- */
+function closingDoc(a){
+  const c = Store.get('clients', a.clientId), as = Logic.assessmentsOf(c.id), first = as[0], plans = Logic.plansOf(c.id);
+  const goalRows = [];
+  for (const pl of plans) for (const g of pl.goals || []) {
+    const rv = as.flatMap(x => (x.goalReview || []).map(r => ({ ...r, date:x.date }))).filter(r => r.goalId === g.id && r.planId === pl.id).at(-1);
+    goalRows.push([`v${pl.version}`, g.text, rv ? gasLabel(rv.gas) : '未評', rv?.note || '']);
+  }
+  const groups = [...new Set(plans.flatMap(p => (p.groups || []).map(g => g.type)))];
+  const blocks = [clientKV(c, [['服務期間', `${first ? rocDate(first.date) : '—'} ～ ${rocDate(a.date)}`], ['結案日期', rocDate(a.date)], ['結案原因', a.closeReason || ''], ['計畫版本', plans.length + ' 版']]),
+    { t:'h', text:'一、初評與結案功能比較' }, metricTable(first, a, '初評', '結案'),
+    { t:'h', text:'二、最想做到的事（初評 → 結案）' }, copmTable(first, a, '初評', '結案'),
+    { t:'h', text:'三、歷次計畫目標與達成（GAS）' }, goalRows.length ? { t:'table', head:['版本', '目標', '達成度', '說明'], widths:[0.8, 5.6, 1.8, 2], center:[0], rows:goalRows } : { t:'p', text:'（無）' },
+    { t:'h', text:'四、整體介入執行情形' }, ...execBlocks(plans, first ? first.date : a.date, a.date),
+    ...(groups.length ? [{ t:'p', text:'參與團體：' + groups.join('、') }] : []),
+    { t:'h', text:'五、結案摘要' }, { t:'p', text:a.summary || '（未填寫）' },
+    { t:'h', text:'六、後續建議（居家延續、轉介、維持方式）' }, { t:'p', text:a.followUp || '（未填寫）' },
+    { t:'sign', items:['評估者', '督導', `${term()}／家屬`] }];
+  return { title:'復能結案報告', sub:`${c.name}｜${first ? rocDate(first.date) : ''} ～ ${rocDate(a.date)}`, blocks };
+}
+
+/* 依評估類別自動選擇報告 */
+function docForAssessment(a){
+  if (a.type === '結案評估') return closingDoc(a);
+  if (a.type === '初評') return initialDoc(a);
+  return Logic.assessmentsOf(a.clientId).some(x => x.id !== a.id && x.date <= a.date) ? reassessDoc(a) : initialDoc(a);
+}
+const docNameFor = a => a.type === '結案評估' ? '復能結案報告' : a.type === '初評' ? '初評與復能計畫表' : '再評估與成效報告';
+
 /* ---- app.js ---- */
 /* ================================================================
    App：外框、路由、首頁、設定
@@ -1262,7 +1389,7 @@ const ROUTES = [
   [/^#?\/?$/, () => pageHome()],
   [/^#\/clients$/, () => pageClients()],
   [/^#\/client\/([^/?]+)(?:\/(\w+))?$/, m => pageClient(m[1], m[2] || 'assess')],
-  [/^#\/assess\/new\/([^/?]+)$/, m => pageAssessEdit(null, m[1])],
+  [/^#\/assess\/new\/([^/?]+)(?:\?(.*))?$/, m => pageAssessEdit(null, m[1], new URLSearchParams(m[2] || '').get('type'))],
   [/^#\/assess\/([^/?]+)$/, m => pageAssessEdit(m[1])],
   [/^#\/plan\/new\/([^/?]+)(?:\?(.*))?$/, m => pagePlanEdit(null, m[1], new URLSearchParams(m[2] || ''))],
   [/^#\/plan\/([^/?]+)$/, m => pagePlanEdit(m[1])],
@@ -1478,12 +1605,24 @@ function pageClient(id, tab){
   setTitle(c.name, [isRes() ? c.bed : '', c.gender, ageAt(c.birth) != null ? ageAt(c.birth) + '歲' : '', c.diagnosis].filter(Boolean).join('・'));
   const body = { assess:cAssess, plan:cPlan, check:cCheck, export:cExport }[tab] || cAssess;
   return `<div class="toolbar"><a class="btn" href="#/clients">${icon('back', 16)}名冊</a><span class="sp"></span>${btn('刪除此' + term(), `deleteClient('${c.id}')`, { k:'danger ghost', i:'trash' })}${btn('編輯基本資料', `editClient('${c.id}')`, { i:'edit' })}</div>
+  ${nextStepHTML(c)}
   <div class="tabs">${CTABS.map(([k, l], i) => `<a href="#/client/${c.id}/${k}" class="${tab === k ? 'on' : ''}"><span class="tn-n">${i + 1}</span>${l}</a>`).join('')}</div>${body(c)}`;
+}
+function nextStepHTML(c){
+  const as = Logic.assessmentsOf(c.id), last = as.at(-1), p = activePlan(c.id), closing = as.filter(a => a.type === '結案評估').at(-1);
+  const steps = ['初評', '開立計畫', '每日勾選', '再評／修正', '結案'];
+  let cur, act;
+  if (c.status === '結案' || closing) { cur = 4; act = `<span class="muted">已於 ${rocDate(closing?.date || c.closeDate)} 結案</span>${closing ? exportBar('cl_' + closing.id, () => closingDoc(Store.get('assessments', closing.id))) : ''}`; }
+  else if (!last) { cur = 0; act = `<a class="btn primary" href="#/assess/new/${c.id}">${icon('clip', 16)}進行初評</a>`; }
+  else if (!p) { cur = 1; act = `<a class="btn primary" href="#/plan/new/${c.id}?from=${last.id}">${icon('rx', 16)}依評估開立計畫</a>`; }
+  else { const due = diffDays(todayISO(), p.endDate); cur = due <= 14 ? 3 : 2;
+    act = `<a class="btn ${cur === 2 ? 'primary' : ''}" href="#/today">${icon('check', 16)}今日勾選</a><a class="btn ${cur === 3 ? 'primary' : ''}" href="#/assess/new/${c.id}">${icon('clip', 16)}再評估</a><a class="btn" href="#/assess/new/${c.id}?type=結案評估">結案評估</a><span class="muted">計畫至 ${rocDate(p.endDate)}${due <= 14 ? (due < 0 ? '（已到期，請再評）' : `（${due} 天後到期，請安排再評）`) : ''}</span>`; }
+  return `<div class="flow card"><div class="flow-steps">${steps.map((t, i) => `<span class="fs ${i < cur ? 'done' : i === cur ? 'cur' : ''}">${i < cur ? '✓' : i + 1} ${t}</span>`).join('<span class="fa">→</span>')}</div><div class="flow-act"><b>下一步：</b>${act}</div></div>`;
 }
 function cAssess(c){
   const as = Logic.assessmentsOf(c.id).reverse();
-  return `<section class="card"><h2>評估紀錄 <span class="sp"></span><a class="btn primary sm" href="#/assess/new/${c.id}">${icon('plus', 14)}${as.length ? '再評估' : '進行評估'}</a></h2>
-    ${as.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>日期</th><th>類別</th><th>評估者</th><th>巴氏</th><th>TUG</th><th>30秒坐站</th><th>握力</th><th>需復能問題</th><th>輸出</th></tr></thead><tbody>${as.map(a => `<tr><td><a href="#/assess/${a.id}">${rocDate(a.date)}</a></td><td>${badge(a.type)}</td><td>${esc(a.assessor || '')}</td><td>${scoreBarthel(a)?.total ?? '—'}</td><td>${a.phy?.tug || '—'}</td><td>${a.phy?.cs30 ?? '—'}</td><td>${a.phy?.grip || '—'}</td><td><small>${esc((a.problems || []).map(p => p.text).join('、').slice(0, 60))}</small></td><td class="nowrap">${exportBar('as_' + a.id, () => assessDoc(Store.get('assessments', a.id), c), ['pdf', 'word'])}</td></tr>`).join('')}</tbody></table></div>` : empty('尚無評估紀錄')}</section>
+  return `<section class="card"><h2>評估紀錄 <small>初評、再評、結案</small><span class="sp"></span><a class="btn primary sm" href="#/assess/new/${c.id}">${icon('plus', 14)}${as.length ? '再評估' : '進行初評'}</a>${as.length && c.status !== '結案' ? `<a class="btn sm" href="#/assess/new/${c.id}?type=結案評估">結案評估</a>` : ''}</h2>
+    ${as.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>日期</th><th>類別</th><th>評估者</th><th>巴氏</th><th>TUG</th><th>30秒坐站</th><th>握力</th><th>需復能問題</th><th>輸出</th></tr></thead><tbody>${as.map(a => `<tr><td><a href="#/assess/${a.id}">${rocDate(a.date)}</a></td><td>${badge(a.type)}</td><td>${esc(a.assessor || '')}</td><td>${scoreBarthel(a)?.total ?? '—'}</td><td>${a.phy?.tug || '—'}</td><td>${a.phy?.cs30 ?? '—'}</td><td>${a.phy?.grip || '—'}</td><td><small>${esc((a.problems || []).map(p => p.text).join('、').slice(0, 60))}</small></td><td class="nowrap"><small class="muted">${docNameFor(a)}</small><br>${exportBar('as_' + a.id, () => docForAssessment(Store.get('assessments', a.id)))}</td></tr>`).join('')}</tbody></table></div>` : empty('尚無評估紀錄')}</section>
   ${copmCompare(c)}
   ${as.length > 1 ? `<section class="card"><h2>巴氏量表變化</h2>${lineChart(Logic.assessmentsOf(c.id).map(a => ({ x:a.date, y:scoreBarthel(a)?.partial ? null : scoreBarthel(a)?.total })), { min:0, max:100 })}</section>` : ''}`;
 }
@@ -1527,27 +1666,36 @@ function saveWeekNote(planId, cid, week, note){ const r = Store.all('weekNotes')
 
 let expOpt = { mode:'week', filled:false };
 function cExport(c){
-  const p = activePlan(c.id), a = Logic.lastAssessment(c.id), ws = expOpt.week || weekStart(todayISO()), mo = expOpt.month || todayISO().slice(0, 7);
-  return `<section class="card"><h2>個別執行檢核表 <small>印出後由照服員、治療師或${term()}本人勾選</small></h2>
-    ${p ? `<div class="form-grid g3">
+  const as = Logic.assessmentsOf(c.id), p = activePlan(c.id), ws = expOpt.week || weekStart(todayISO()), mo = expOpt.month || todayISO().slice(0, 7);
+  const ini = as.filter(a => a.type === '初評').at(-1) || as[0], res = as.filter(a => a.type === '再評' || a.type === '不定期'), clo = as.filter(a => a.type === '結案評估').at(-1);
+  const pickRe = expOpt.re && res.find(a => a.id === expOpt.re) ? expOpt.re : res.at(-1)?.id;
+  const row = (n, title, desc, body) => `<section class="card form-row"><div class="fr-h"><span class="sn">${n}</span><div><h2>${title}</h2><p class="hint">${desc}</p></div></div>${body}</section>`;
+  const off = t => `<p class="muted">${t}</p>`;
+  return `<div class="notice">以下四種表單對應評鑑所需紀錄，每一種都可輸出 <b>PDF（列印）、Word、PPT</b>。</div>
+  ${row(1, '初評與復能計畫表', '初評結果、最想做到的事、需復能問題，加上依初評擬定的目標、個別與團體介入。',
+    ini ? `<div class="exp-row"><span>${rocDate(ini.date)} ${esc(ini.type)}</span>${exportBar('ini_' + ini.id, () => initialDoc(Store.get('assessments', ini.id)))}</div>` : off('尚未完成初評'))}
+  ${row(2, '每日執行檢核表', `印出後由照服員、治療師或${term()}本人勾選；也可帶入系統中已勾選的紀錄。`,
+    p ? `<div class="form-grid g3">
       <div class="field"><label class="lbl">版本</label><div class="pills">${[['week', '週表'], ['month', '月表'], ['big', `${term()}自我檢核（大字＋圖）`]].map(([v, l]) => `<label class="pill"><input type="radio" name="em" ${expOpt.mode === v ? 'checked' : ''} onchange="expOpt.mode='${v}';route()"><span>${l}</span></label>`).join('')}</div></div>
       <div class="field"><label class="lbl">${expOpt.mode === 'month' ? '月份' : '週（任選一天）'}</label>${expOpt.mode === 'month' ? `<input type="month" class="inp" value="${mo}" onchange="expOpt.month=this.value">` : `<input type="date" class="inp" value="${ws}" onchange="expOpt.week=weekStart(this.value);route()">`}</div>
       <div class="field"><label class="lbl">內容</label><div class="pills">${[[false, '空白（手寫勾選）'], [true, '帶入已記錄']].map(([v, l]) => `<label class="pill"><input type="radio" name="ef" ${expOpt.filled === v ? 'checked' : ''} onchange="expOpt.filled=${v}"><span>${l}</span></label>`).join('')}</div></div></div>
-      <div class="exp-row"><span>產生檢核表</span>${exportBar('ck_' + c.id, () => indivCheckDoc(activePlan(c.id), { mode:expOpt.mode === 'month' ? 'month' : 'week', big:expOpt.mode === 'big', week:expOpt.week || weekStart(todayISO()), month:expOpt.month || todayISO().slice(0, 7), filled:expOpt.filled }), ['pdf', 'word'])}</div>` : empty('需先開立介入計畫')}
-  </section>
+      <div class="exp-row"><span>產生檢核表</span>${exportBar('ck_' + c.id, () => indivCheckDoc(activePlan(c.id), { mode:expOpt.mode === 'month' ? 'month' : 'week', big:expOpt.mode === 'big', week:expOpt.week || weekStart(todayISO()), month:expOpt.month || todayISO().slice(0, 7), filled:expOpt.filled }))}</div>` : off('需先開立介入計畫'))}
+  ${row(3, '再評估與成效報告', '前次與本次的功能比較、最想做到的事變化、目標達成（GAS）、執行率，以及修正後計畫。',
+    res.length ? `<div class="exp-row"><select class="inp sm" onchange="expOpt.re=this.value;route()" aria-label="選擇再評">${res.slice().reverse().map(a => `<option value="${a.id}" ${a.id === pickRe ? 'selected' : ''}>${rocDate(a.date)} ${esc(a.type)}</option>`).join('')}</select>${exportBar('re_' + c.id, () => reassessDoc(Store.get('assessments', expOpt.re && res.find(a => a.id === expOpt.re) ? expOpt.re : res.at(-1).id)))}</div>` : off('完成第一次再評估後即可產生'))}
+  ${row(4, '復能結案報告', '服務期間初評與結案的功能比較、歷次目標達成、整體執行率、結案原因與後續建議。',
+    clo ? `<div class="exp-row"><span>${rocDate(clo.date)} 結案</span>${exportBar('cl_' + clo.id, () => closingDoc(Store.get('assessments', clo.id)))}</div>` : off(`完成「結案評估」後即可產生${as.length ? `　<a class="btn sm" href="#/assess/new/${c.id}?type=結案評估">進行結案評估</a>` : ''}`))}
   <section class="card"><h2>其他文件</h2>
-    ${p ? `<div class="exp-row"><span>復能介入計畫書（含項目圖片，PPT 為一項一頁的衛教投影片）</span>${exportBar('pl_' + p.id, () => planDoc(Store.get('plans', p.id)))}</div>` : ''}
-    ${a ? `<div class="exp-row"><span>最近一次評估表（${rocDate(a.date)}）</span>${exportBar('as_' + a.id, () => assessDoc(Store.get('assessments', a.id), c), ['pdf', 'word'])}</div>` : ''}
-    <div class="exp-row"><span>空白評估表（已帶入姓名）</span>${exportBar('ba_' + c.id, () => assessDoc(null, c), ['pdf', 'word'])}</div></section>`;
+    ${p ? `<div class="exp-row"><span>復能介入計畫書（項目附圖；PPT 為一項一頁的衛教投影片）</span>${exportBar('pl_' + p.id, () => planDoc(Store.get('plans', p.id)))}</div>` : ''}
+    <div class="exp-row"><span>空白評估表（已帶入姓名，可手寫）</span>${exportBar('ba_' + c.id, () => assessDoc(null, c))}</div></section>`;
 }
 
 /* ---------------- 評估 ---------------- */
-function pageAssessEdit(id, cid){
+function pageAssessEdit(id, cid, type){
   let a, carried = null;
   if (id) a = clone(Store.get('assessments', id) || {});
   else {
     const prev = Logic.lastAssessment(cid);
-    a = { clientId:cid, date:todayISO(), type:prev ? '再評' : '初評', assessor:App.currentUserId(), role:prev?.role || '', adl:{}, iadl:{}, spmsq:{ items:Array(10).fill(''), edu:'' }, phy:{}, pain:{}, physio:'', strength:'', expect:'', problemSel:{}, customProblems:'', summary:'' };
+    a = { clientId:cid, date:todayISO(), type:type || (prev ? '再評' : '初評'), assessor:App.currentUserId(), role:prev?.role || '', adl:{}, iadl:{}, spmsq:{ items:Array(10).fill(''), edu:'' }, phy:{}, pain:{}, physio:'', strength:'', expect:'', problemSel:{}, customProblems:'', summary:'' };
     if (prev) {
       // 再評：帶入上一次評估（初評或前次再評）內容，只改有變化的部分；體能測試與自評分數需重新施測
       Object.assign(a, { adl:clone(prev.adl || {}), iadl:clone(prev.iadl || {}), spmsq:clone(prev.spmsq || { items:Array(10).fill(''), edu:'' }), pain:clone(prev.pain || {}), physio:prev.physio || '', strength:prev.strength || '', expect:prev.expect || '', phy:{ note:prev.phy?.note || '' } });
@@ -1562,7 +1710,7 @@ function pageAssessEdit(id, cid){
   const prev = Logic.assessmentsOf(c.id).filter(x => x.id !== a.id && x.date <= a.date).at(-1);
   S._ac = { c, prev, id, carried };
   setTitle((id ? '' : '新增') + (a.type || '') + '評估', c.name);
-  S.onEdit = p => { liveSum(c); if (/^copm/.test(p)) copmAvgUpdate(); if (/^(adl|iadl|phy|spmsq|pain|copm)/.test(p)) { clearTimeout(S._t); S._t = setTimeout(() => { const el = $('#sugg'); if (el) el.innerHTML = suggHTML(c); }, 250); } };
+  S.onEdit = p => { if (p === 'type') { rerender(pageAssessBody); return; } liveSum(c); if (/^copm/.test(p)) copmAvgUpdate(); if (/^(adl|iadl|phy|spmsq|pain|copm)/.test(p)) { clearTimeout(S._t); S._t = setTimeout(() => { const el = $('#sugg'); if (el) el.innerHTML = suggHTML(c); }, 250); } };
   return pageAssessBody();
 }
 function pageAssessBody(){ setTimeout(() => liveSum(S._ac.c), 0); return assessForm(); }
@@ -1576,10 +1724,10 @@ function assessForm(){
   const hasIadl = Object.values(a.iadl || {}).some(v => v !== '' && v != null), hasSp = (a.spmsq?.items || []).some(Boolean);
   const ph = (k, l, u, h) => F.field(`${l}（${u}）`, F.num('phy.' + k, { min:0 }) + pv(prev?.phy?.[k]), { hint:h });
   return `<div class="toolbar sticky-bar"><a class="btn" href="#/client/${c.id}">${icon('back', 16)}${esc(c.name)}</a><span class="sp"></span>
-    ${id ? btn('刪除', `if(askConfirm('確定刪除此評估？')){Store.remove('assessments','${id}');S.dirty=false;App.go('#/client/${c.id}')}`, { k:'danger ghost', i:'trash' }) : ''}${btn('儲存', 'saveAssess(false)')}${btn('儲存並開立介入計畫', 'saveAssess(true)', { k:'primary', i:'rx' })}</div>
+    ${id ? btn('刪除', `if(askConfirm('確定刪除此評估？')){Store.remove('assessments','${id}');S.dirty=false;App.go('#/client/${c.id}')}`, { k:'danger ghost', i:'trash' }) : ''}${btn('儲存', 'saveAssess(false)')}${a.type === '結案評估' ? btn('儲存並結案', 'saveAssess(false)', { k:'primary', i:'check' }) : btn('儲存並開立介入計畫', 'saveAssess(true)', { k:'primary', i:'rx' })}</div>
   <div class="edit-layout"><div class="edit-main">
     ${carried ? `<div class="notice carry">已帶入 <b>${rocDate(carried.date)} ${esc(carried.type)}</b> 的內容：最想做到的事、巴氏量表、IADL、認知、疼痛與現況。<b>請只修改有變化的項目。</b>體能測試與自評分數需重新施測，前次數值顯示在旁（橘色＝本次已修改）。</div>` : ''}
-    ${sec('基本', `<div class="form-grid g3">${F.field('評估日期', F.date('date'), { req:true })}${F.field('類別', F.select('type', ['初評', '再評', '不定期'], { blank:false }))}${F.field('評估者', F.input('assessor'), { req:true })}${F.field('職類', F.select('role', PRO_ROLES))}</div>`)}
+    ${sec('基本', `<div class="form-grid g3">${F.field('評估日期', F.date('date'), { req:true })}${F.field('類別', F.select('type', ['初評', '再評', '不定期', '結案評估'], { blank:false }))}${F.field('評估者', F.input('assessor'), { req:true })}${F.field('職類', F.select('role', PRO_ROLES))}</div>`)}
     ${sec('① 最想做到的事 <small>以長輩為中心（參考 COPM）</small>', copmHTML(prev))}
     ${(a.goalReview || []).length ? sec('② 前次計畫目標達成（GAS）', gasHTML(), '再評估時評定，作為修正計畫依據') : ''}
     ${sec('日常生活功能｜巴氏量表', BARTHEL.map(it => `<div class="q"><div class="qh"><b>${it.n}</b>${pv(prev?.adl?.[it.k], a.adl?.[it.k])}</div>${F.radios('adl.' + it.k, it.opts.map(([s, d]) => [s, `${s} 分｜${d}`]), { t:'num', cls:'vert' })}</div>`).join(''))}
@@ -1588,6 +1736,7 @@ function assessForm(){
     ${opt('認知 SPMSQ', `${F.field('教育程度', F.radios('spmsq.edu', EDU_OPTS))}<table class="tbl qa"><tbody>${SPMSQ.map((q, i) => `<tr><td>${i + 1}. ${q}</td><td>${F.radios('spmsq.items.' + i, [['c', '正確'], ['x', '錯誤']])}</td></tr>`).join('')}</tbody></table>`, '選填', hasSp)}
     ${opt('疼痛與現況', `<div class="form-grid">${F.field(`疼痛 0–10　<a href="javascript:void(0)" onclick="S.edit.pain.nrs='';document.querySelectorAll('input[name=\\'pain.nrs\\']').forEach(r=>r.checked=false);S.dirty=true;liveSum(Store.get('clients',S.edit.clientId))">清除</a>`, F.radios('pain.nrs', [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => [n, String(n)]), { t:'num' }), { cls:'span2' })}${F.field('疼痛部位', F.input('pain.site'))}<div></div>
       ${F.field('身體與生活現況', F.text('physio', { rows:2 }), { cls:'span2' })}${F.field('優勢與興趣', F.text('strength', { rows:2, ph:'例：喜歡唱歌、以前是農夫（可作為團體安排參考）' }))}${F.field(`${term()}／家屬期待`, F.text('expect', { rows:2, ph:'例：想自己走去廁所' }))}</div>`, '選填', hasPain)}
+    ${a.type === '結案評估' ? sec('結案', `<div class="form-grid">${F.field('結案原因', F.select('closeReason', CLOSE_REASONS), { req:true })}<div></div>${F.field('後續建議（居家延續、轉介、維持方式）', F.text('followUp', { rows:3, ph:'例：維持每天晚飯後坐站 10 下；持續參加運動團體；轉介社區關懷據點' }), { cls:'span2' })}</div><p class="hint">儲存後：執行中的計畫會結束、${term()}狀態改為「結案」，並可產生「復能結案報告」。</p>`) : ''}
     ${sec('評估結果：需復能的問題', `<p class="hint">依評估結果自動建議；勾選的問題會帶入介入計畫，並附上建議的個別項目、團體與輔具。</p><div id="sugg">${suggHTML(c)}</div>${F.field('其他問題（每行一項）', F.text('customProblems', { rows:2 }))}${F.field('評估摘要', F.text('summary', { rows:2 }))}`)}
   </div><aside class="edit-side"><div class="card sticky" id="live"></div></aside></div>`;
 }
@@ -1628,6 +1777,14 @@ function saveAssess(toPlan){
   if ((!scoreBarthel(a) || scoreBarthel(a).partial) && !askConfirm('巴氏量表尚未填完，仍要儲存？')) return;
   const sg = suggestFromAssessment(a, c);
   a.problems = [...sg.filter(s => a.problemSel?.[s.code] !== false), ...(a.customProblems || '').split('\n').map(t => t.trim()).filter(Boolean).map(t => ({ code:'custom', text:t, ex:[], dev:[], grp:[], referral:'' }))];
+  if (a.type === '結案評估') {
+    if (!a.closeReason) return toast('請選擇結案原因', 'err');
+    if (!askConfirm(`確定結案？\n執行中的計畫會在 ${rocDate(a.date)} 結束，${c.name} 的狀態改為「結案」。`)) return;
+    const s = Store.upsert('assessments', a);
+    Logic.plansOf(c.id).filter(x => x.status === '執行中').forEach(x => { x.status = '已結束'; x.endDate = a.date < x.startDate ? x.startDate : a.date; Store.upsert('plans', x); });
+    Store.upsert('clients', { ...c, status:'結案', closeDate:a.date });
+    S.dirty = false; toast('已結案，可產生「復能結案報告」'); App.go(`#/client/${c.id}/export`); return s;
+  }
   const s = Store.upsert('assessments', a); S.dirty = false; toast('評估已儲存');
   const act = activePlan(a.clientId);
   App.go(toPlan ? `#/plan/new/${a.clientId}?from=${s.id}${act ? '&copy=' + act.id : ''}` : `#/client/${a.clientId}`);
