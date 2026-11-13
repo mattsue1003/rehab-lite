@@ -53,7 +53,15 @@ function pageToday(){
   <div class="notice today-sum"><div><b class="big">${done}／${tot}</b> 項已記錄${tot && done === tot ? '　<span class="card-done">✓ 今天全部記錄完成</span>' : ''}</div>
     <div class="ts-meta">${Store.lastSaved ? `💾 已儲存於這台電腦 ${hhmm(Store.lastSaved.toISOString())}` : '💾 每次點選都會立即儲存'}${Folder.supported ? (Folder.ready ? '　📁 資料夾自動備份中' : Folder.connected ? '　<span class="warn-t">⚠ 資料夾自動備份未啟用，請按左下角「重新連接資料夾」</span>' : '') : ''}　記錄者：<b>${esc(App.currentUserId() || '（請於右上角填寫）')}</b></div>
     <div class="ts-meta">點一下＝<b class="c-ok">✓ 完成</b>，再點＝<b class="c-part">△ 部分</b>，再點＝<b class="c-skip">✕ 未執行</b>，再點＝取消；點錯可按下方訊息的「復原」。</div></div>
-  <div class="tgrid">${cards || empty(`今天沒有排定的個別介入項目。請先為${term()}開立介入計畫。`, `<a class="btn primary" href="#/clients">前往${term()}名單</a>`)}</div>`;
+  <div class="tgrid">${cards || todayEmpty(d)}</div>`;
+}
+function todayEmpty(d){
+  const act = Store.all('clients').filter(c => c.status !== '結案').map(c => activePlan(c.id)).filter(Boolean);
+  if (!act.length) return empty(`目前沒有執行中的介入計畫。請先為${term()}開立介入計畫。`, `<a class="btn primary" href="#/clients">前往${term()}名單</a>`);
+  const has = x => act.some(p => checkables(p).some(it => scheduled(p, it, x)));
+  let prev = null, next = null; for (let i = 1; i <= 14; i++) { if (!prev && has(addDays(d, -i))) prev = addDays(d, -i); if (!next && has(addDays(d, i))) next = addDays(d, i); }
+  const go = x => btn(`${x < d ? '看上一個' : '看下一個'}排定日：${rocDate(x).slice(-5)}（週${WEEKDAYS[weekday(x)]}）`, `S.day='${x}';route()`, { k:x < d ? '' : 'primary' });
+  return empty(`${d === todayISO() ? '今天' : '這一天'}（週${WEEKDAYS[weekday(d)]}）沒有排定的項目${isRes() ? '' : '，日照通常週末不排定'}。`, [prev, next].filter(Boolean).map(go).join(' '));
 }
 const ST_LABEL = { ok:'完成', part:'部分完成', skip:'未執行' };
 const hhmm = iso => { if (!iso) return ''; const t = new Date(iso); return String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0'); };
@@ -127,7 +135,18 @@ function cAssess(c){
   return `<section class="card"><h2>評估紀錄 <small>初評、再評、結案</small><span class="sp"></span><a class="btn primary sm" href="#/assess/new/${c.id}">${icon('plus', 14)}${as.length ? '再評估' : '進行初評'}</a>${as.length && c.status !== '結案' ? `<a class="btn sm" href="#/assess/new/${c.id}?type=結案評估">結案評估</a>` : ''}</h2>
     ${as.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>日期</th><th>類別</th><th>評估者</th><th>巴氏</th><th>TUG</th><th>30秒坐站</th><th>握力</th><th>需復能問題</th><th>輸出</th></tr></thead><tbody>${as.map(a => `<tr><td><a href="#/assess/${a.id}">${rocDate(a.date)}</a></td><td>${badge(a.type)}</td><td>${esc(a.assessor || '')}</td><td>${scoreBarthel(a)?.total ?? '—'}</td><td>${a.phy?.tug || '—'}</td><td>${a.phy?.cs30 ?? '—'}</td><td>${a.phy?.grip || '—'}</td><td><small>${esc((a.problems || []).map(p => p.text).join('、').slice(0, 60))}</small></td><td class="nowrap"><small class="muted">${docNameFor(a)}</small><br>${exportBar('as_' + a.id, () => docForAssessment(Store.get('assessments', a.id)))}</td></tr>`).join('')}</tbody></table></div>` : empty('尚無評估紀錄')}</section>
   ${copmCompare(c)}
-  ${as.length > 1 ? `<section class="card"><h2>巴氏量表變化</h2>${lineChart(Logic.assessmentsOf(c.id).map(a => ({ x:a.date, y:scoreBarthel(a)?.partial ? null : scoreBarthel(a)?.total })), { min:0, max:100 })}</section>` : ''}`;
+  ${as.length > 1 ? assessTrends(c) : ''}`;
+}
+/* 多次評估的功能趨勢：巴氏、TUG、30 秒坐站、最想做到的事（平均表現） */
+function assessTrends(c){
+  const as = Logic.assessmentsOf(c.id), num = v => v === '' || v == null ? null : +v;
+  const ch = (t, sub, pts, o) => pts.some(p => p.y != null) ? `<section class="card"><h2>${t}</h2><p class="chart-sub">${sub}</p>${lineChart(pts, o)}</section>` : '';
+  return `<h2 class="sec-t">評估趨勢 <small>共 ${as.length} 次評估（${as.map(a => a.type).join(' → ')}）</small></h2><div class="charts">
+    ${ch('巴氏量表', '0–100 分，越高越獨立', as.map(a => ({ x:a.date, y:scoreBarthel(a)?.partial ? null : scoreBarthel(a)?.total ?? null })), { min:0, max:100 })}
+    ${ch('最想做到的事｜平均表現', '自評 1–10，進步 2 分以上具臨床意義', as.map(a => ({ x:a.date, y:copmAvg(a, 'perf') })), { min:0, max:10 })}
+    ${ch('TUG 起身行走', '秒，越短越好；虛線為跌倒高風險切點', as.map(a => ({ x:a.date, y:num(a.phy?.tug) })), { cut:PHY_CUT.tug, cutLabel:'13.5 秒', unit:' 秒' })}
+    ${ch('30 秒坐站', '次，越多越好', as.map(a => ({ x:a.date, y:num(a.phy?.cs30) })), { unit:' 次' })}
+  </div>`;
 }
 function copmCompare(c){
   const as = Logic.assessmentsOf(c.id).filter(a => copmRows(a).length); if (!as.length) return '';
@@ -162,8 +181,37 @@ function cCheck(c){
   <section class="card flush"><div class="tbl-wrap"><table class="ck"><thead><tr><th class="ck-n">項目</th>${dates.map(d => `<th class="${d === todayISO() ? 'today' : ''}">${d.slice(5).replace('-', '/')}<br><small>週${WEEKDAYS[weekday(d)]}</small></th>`).join('')}</tr></thead><tbody>
   ${checkables(p).map(it => `<tr class="${it.group ? 'ck-grp' : ''}"><th class="ck-n"><div class="ck-it">${it.group ? groupThumb('sm') : thumb(it.img, 'sm')}<div><b>${it.group ? '<span class="grp-tag">團體</span>' : ''}${esc(it.name)}</b><small>${esc(it.dose || '')}｜${esc(it.executor || '')}</small></div></div></th>${dates.map(d => { if (!scheduled(p, it, d)) return '<td class="off">—</td>'; const r = recs.get(it.id + '|' + d); return `<td><button class="ckb ${r ? 's-' + r.status : ''}" onclick="setCheck('${p.id}','${it.id}','${d}',NEXT['${r?.status || ''}']);route()" title="${r ? esc(r.by || '') : '尚未記錄'}" aria-label="${esc(it.name)} ${d}">${r ? SYM[r.status] : ''}</button></td>`; }).join('')}</tr>`).join('')}
   </tbody></table></div></section>
+  ${execTrend(c)}
   <section class="card"><h2>本週備註</h2><textarea class="inp" rows="3" placeholder="未執行原因、反應、進步或異常狀況…" onchange="saveWeekNote('${p.id}','${c.id}','${ws}',this.value)">${esc(note?.note || '')}</textarea>
     <div class="exp-row"><span>印出本週檢核表</span>${exportBar('wk_' + p.id, () => indivCheckDoc(activePlan(c.id), { mode:'week', week:ws, filled:true }), ['pdf', 'word'])}</div></section>`;
+}
+/* 每週執行率趨勢（含各版計畫），讓勾選的數據變成看得懂的變化 */
+function weekRates(pl, ws, recs){
+  const r = { i:[0, 0], g:[0, 0], skip:0 }, end = [addDays(ws, 6), pl.endDate, todayISO()].sort()[0];
+  for (let d = ws > pl.startDate ? ws : pl.startDate; d <= end; d = addDays(d, 1)) for (const it of checkables(pl)) if ((it.days || []).includes(weekday(d))) {
+    const s = recs.get(it.id + '|' + d)?.status, b = it.group ? r.g : r.i; if (!s && d === todayISO()) continue; /* 今天尚未記錄的不算未執行 */ b[0]++; b[1] += s === 'ok' ? 1 : s === 'part' ? 0.5 : 0; if (s === 'skip') r.skip++;
+  }
+  return r;
+}
+function execTrend(c){
+  const ps = Logic.plansOf(c.id).filter(p => p.status !== '草稿' && p.startDate <= todayISO()); if (!ps.length) return '';
+  const recs = new Map(Store.all('checks').filter(x => x.clientId === c.id).map(x => [x.itemId + '|' + x.date, x]));
+  const first = weekStart(ps.map(p => p.startDate).sort()[0]), weeks = [];
+  for (let w = first; w <= todayISO(); w = addDays(w, 7)) {
+    const t = { i:[0, 0], g:[0, 0], skip:0 };
+    for (const p of ps) { const r = weekRates(p, w, recs); t.i[0] += r.i[0]; t.i[1] += r.i[1]; t.g[0] += r.g[0]; t.g[1] += r.g[1]; t.skip += r.skip; }
+    if (t.i[0] + t.g[0]) weeks.push({ w, i:t.i[0] ? Math.round(t.i[1] / t.i[0] * 100) : null, g:t.g[0] ? Math.round(t.g[1] / t.g[0] * 100) : null });
+  }
+  if (!weeks.length) return '';
+  const marks = ps.slice(1).map(p => ({ x:weekStart(p.startDate), label:'v' + p.version })), wl = w => '週 ' + rocDate(w);
+  const sum = p => { const r = { i:[0, 0], g:[0, 0], skip:0 }; for (let w = weekStart(p.startDate); w <= [p.endDate, todayISO()].sort()[0]; w = addDays(w, 7)) { const x = weekRates(p, w, recs); r.i[0] += x.i[0]; r.i[1] += x.i[1]; r.g[0] += x.g[0]; r.g[1] += x.g[1]; r.skip += x.skip; } return r; };
+  const pct = b => b[0] ? Math.round(b[1] / b[0] * 100) + '%' : '—';
+  return `<section class="card"><h2>執行趨勢 <small>每週執行率＝（完成＋部分×0.5）÷ 排定次數</small></h2>
+    <div class="charts"><div>${lineChart(weeks.map(x => ({ x:x.w, y:x.i })), { min:0, max:100, unit:'%', xLabel:wl, marks, title:'個別項目每週執行率' })}<p class="chart-sub">個別項目執行率（%）${marks.length ? '｜虛線＝計畫改版' : ''}</p></div>
+    ${weeks.some(x => x.g != null) ? `<div>${lineChart(weeks.map(x => ({ x:x.w, y:x.g })), { min:0, max:100, unit:'%', xLabel:wl, marks, title:'團體每週參與率' })}<p class="chart-sub">團體參與率（%）</p></div>` : ''}</div>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>計畫版本</th><th>期間</th><th>個別執行率</th><th>團體參與率</th><th>未執行次數</th></tr></thead><tbody>
+    ${ps.slice().reverse().map(p => { const r = sum(p); return `<tr><td>v${p.version} ${badge(p.status, p.status === '執行中' ? 'green' : '')}</td><td>${rocDate(p.startDate)}～${rocDate([p.endDate, todayISO()].sort()[0])}</td><td><b>${pct(r.i)}</b></td><td>${pct(r.g)}</td><td>${r.skip}</td></tr>`; }).join('')}
+    </tbody></table></div><p class="hint">執行率偏低的週次，可對照「本週備註」了解原因，作為再評估與修正計畫的依據。</p></section>`;
 }
 function saveWeekNote(planId, cid, week, note){ const r = Store.all('weekNotes').find(x => x.planId === planId && x.week === week) || { planId, clientId:cid, week }; r.note = note; r.by = App.currentUserId(); Store.upsert('weekNotes', r); toast('已儲存備註'); }
 

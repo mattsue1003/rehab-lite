@@ -124,6 +124,8 @@ function lineChart(points, o = {}){
   const path = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(+p.y).toFixed(1)}`).join('');
   const grid = [min, (min + max) / 2, max].map(v => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="cg"/><text x="${L - 5}" y="${y(v) + 4}" class="ct" text-anchor="end">${Math.round(v * 10) / 10}</text>`).join('');
   const cut = o.cut != null ? `<line x1="${L}" x2="${W - R}" y1="${y(o.cut)}" y2="${y(o.cut)}" class="ccut"/><text x="${W - R}" y="${y(o.cut) - 4}" class="ct cut-t" text-anchor="end">${esc(o.cutLabel || '切點 ' + o.cut)}</text>` : '';
-  const dots = pts.map((p, i) => `<circle cx="${x(i)}" cy="${y(+p.y)}" r="4" class="cd"><title>${rocDate(p.x)}：${p.y}${o.unit || ''}</title></circle><text x="${x(i)}" y="${y(+p.y) - 8}" class="ct cv" text-anchor="middle">${p.y}</text><text x="${x(i)}" y="${H - 8}" class="ct" text-anchor="middle">${rocDate(p.x).slice(-5)}</text>`).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="${esc(o.title || '')}">${grid}${cut}<path d="${path}" class="cl"/>${dots}</svg>`;
+  const k = Math.ceil(pts.length / 7), show = i => i % k === (pts.length - 1) % k; /* 點多時只標部分數值與日期（一定包含最新一點） */
+  const dots = pts.map((p, i) => `<circle cx="${x(i)}" cy="${y(+p.y)}" r="${k > 1 ? 3 : 4}" class="cd"><title>${o.xLabel ? o.xLabel(p.x) : rocDate(p.x)}：${p.y}${o.unit || ''}</title></circle>${show(i) ? `<text x="${x(i)}" y="${y(+p.y) - 8}" class="ct cv" text-anchor="middle">${p.y}</text><text x="${x(i)}" y="${H - 8}" class="ct" text-anchor="middle">${rocDate(p.x).slice(-5)}</text>` : ''}`).join('');
+  const vl = (o.marks || []).map(m => { const i = pts.findIndex(p => p.x >= m.x); return i < 0 ? '' : `<line x1="${x(i)}" x2="${x(i)}" y1="${T - 4}" y2="${H - B}" class="cmark"/><text x="${x(i) + 3}" y="${T + 4}" class="ct cmark-t">${esc(m.label)}</text>`; }).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="${esc(o.title || '')}">${grid}${cut}${vl}<path d="${path}" class="cl"/>${dots}</svg>`;
 }
