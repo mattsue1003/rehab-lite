@@ -12,11 +12,11 @@ function pageLibrary(){
   <div class="pills cats">${POSTURES.map(([v, l]) => `<label class="pill sm post"><input type="radio" name="lp" ${libF.post === v ? 'checked' : ''} onchange="libF.post='${v}';route()"><span>${l}</span></label>`).join('')}</div>
   <div class="pills cats">${['', ...ITEM_CATS].filter(c => !c || allItems().some(e => e.cat === c && (!libF.type || e.type === libF.type))).map(c => `<label class="pill sm"><input type="radio" name="lc" ${libF.cat === c ? 'checked' : ''} onchange="libF.cat='${c}';route()"><span>${c || '全部分類'}</span></label>`).join('')}</div>
   <p class="hint">圖片與內容取自「<a href="https://mattsue1003.github.io/reablepre/" target="_blank" rel="noopener">復健復能處方箋開立系統</a>」。點圖卡看詳細說明。</p>
-  <div class="pgrid lib">${list.map(e => `<button type="button" class="pcard" onclick="showItem('${e.id}')">${e.img ? `<img src="${esc(e.img)}" alt="" loading="lazy">` : `<span class="noimg-l">${icon('heart', 28)}<small>圖片準備中</small></span>`}${wcBadge(e)}<b>${esc(e.name)}</b><small>${esc(e.type)}・${esc(e.cat)}</small></button>`).join('') || empty('找不到符合的項目')}</div>`;
+  <div class="pgrid lib">${list.map(e => `<button type="button" class="pcard" onclick="showItem('${e.id}')">${itemImg(e) ? `<img src="${esc(itemImg(e))}" alt="" loading="lazy">` : `<span class="noimg-l">${icon('heart', 28)}<small>圖片準備中</small></span>`}${wcBadge(e)}<b>${esc(e.name)}</b><small>${esc(e.type)}・${esc(e.cat)}</small></button>`).join('') || empty('找不到符合的項目')}</div>`;
 }
 function showItem(id){
   const e = findItem(id); if (!e) return;
-  openModal(e.name, `${e.img ? `<img class="big-img" src="${esc(e.img)}" alt="">` : ''}<p>${badge(e.type, 'green')} ${badge(e.cat)} ${(e.tags || []).map(t => badge(t)).join(' ')}</p>
+  openModal(e.name, `${itemImg(e) ? `<img class="big-img" src="${esc(itemImg(e))}" alt="">` : ''}${e.img ? '' : '<p class="hint">（此項目尚未上傳圖片，暫以類別代表圖顯示，可在「編輯」上傳實際照片）</p>'}<p>${badge(e.type, 'green')} ${badge(e.cat)} ${(e.tags || []).map(t => badge(t)).join(' ')}</p>
     <dl class="info one"><div><dt>建議劑量</dt><dd>${esc(e.dose)}</dd></div><div><dt>說明</dt><dd>${esc(e.how)}</dd></div>${e.steps ? `<div><dt>步驟</dt><dd>${esc(e.steps)}</dd></div>` : ''}${e.caution ? `<div><dt>注意事項</dt><dd class="warn-t">${esc(e.caution)}</dd></div>` : ''}</dl>`,
     { wide:true, extra:id.startsWith('lib_') ? btn('編輯', `closeModal(true);editLib('${id}')`, { k:'sm' }) : '' });
 }

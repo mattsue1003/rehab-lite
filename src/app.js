@@ -62,34 +62,37 @@ function pageHome(){
     <div class="field"><label class="lbl">機構名稱（會印在表單抬頭，可之後修改）</label><input class="inp" id="orgName" placeholder="例：○○日間照顧中心"></div>
     <div class="choice">${['日間照顧', '住宿機構'].map(t => `<button class="choice-b" onclick="setupOrg('${t}')"><b>${t}</b><small>${t === '日間照顧' ? '日照、小規機、家托' : '長照機構、護理之家、養護/安養機構'}</small></button>`).join('')}</div>
     <p class="hint">想先看看操作方式？選完類型後，首頁可一鍵載入 3 個模擬個案。</p></section>`;
-  const today = todayISO(), cs = Store.all('clients').filter(c => c.status !== '結案');
-  let tot = 0, done = 0; const noAssess = [], noPlan = [], ending = [];
+  const today = todayISO(), cs = Store.all('clients').filter(c => c.status !== '結案'), wd = '週' + WEEKDAYS[weekday(today)];
+  let tot = 0, done = 0, plans = 0; const noAssess = [], noPlan = [], ending = [], noConsent = [], missed = [];
   for (const c of cs) {
     const p = activePlan(c.id);
     if (!Logic.lastAssessment(c.id)) noAssess.push(c); else if (!p) noPlan.push(c);
-    if (p) { if (p.endDate <= addDays(today, 14)) ending.push({ c, p }); checkables(p).filter(it => scheduled(p, it, today)).forEach(it => { tot++; if (curStatus(p.id, it.id, today)) done++; }); }
+    if (!c.consentDate) noConsent.push(c);
+    if (p) { plans++; if (p.endDate <= addDays(today, 14)) ending.push({ c, p }); checkables(p).filter(it => scheduled(p, it, today)).forEach(it => { tot++; if (curStatus(p.id, it.id, today)) done++; });
+      const m = missedChecks(p); if (m.n) missed.push({ c, ...m }); }
   }
   const grpCount = {}; cs.forEach(c => (activePlan(c.id)?.groups || []).forEach(g => grpCount[g.type] = (grpCount[g.type] || 0) + 1));
-  const step = (n, t, d, h) => `<a class="step-c" href="${h}"><span class="sn">${n}</span><b>${t}</b><small>${d}</small></a>`;
-  const li = (c, t, h, k) => `<li><span class="tt"><a href="#/client/${c.id}"><b>${esc(c.name)}</b></a> ${isRes() && c.bed ? `<small class="muted">${esc(c.bed)}</small>` : ''} <small class="muted">${t}</small></span><a class="btn sm ${k || ''}" href="${h}">前往</a></li>`;
-  return `<div class="steps4">
-    ${step(1, '評估', '巴氏、體能；系統建議問題、項目、團體與輔具', '#/clients')}
-    ${step(2, '介入計畫', '個別（運動／日常生活訓練）＋ 團體', '#/clients')}
-    ${step(3, '今日勾選', '照服員或治療師一鍵勾選 ✓ △ ✕', '#/today')}
-    ${step(4, '輸出列印', 'Word、PPT、PDF，紙本勾選', '#/clients')}</div>
-  ${Folder.supported && !Folder.connected && !(() => { try { return localStorage.getItem('rehabl:folderLater'); } catch(e){ return ''; } })() ? `<section class="card guide"><h2>📁 連接資料夾</h2>${folderCardHTML(true)}</section>` : ''}
-  ${demoGuideHTML()}
-  ${cs.length ? '' : `<section class="card guide"><h2>還沒有${term()}資料</h2><p>可以先載入 <b>3 個模擬個案</b>，看看從評估、開立計畫、每日勾選到再評估修正的完整流程；看完可一鍵清除。</p><div class="btn-row">${btn('載入 3 個模擬個案', 'loadDemo()', { k:'primary', i:'users' })}<a class="btn" href="#/clients">直接新增${term()}</a></div></section>`}
-  <div class="grid2">
-    <section class="card"><h2>今日勾選（個別＋團體） <small>${rocDate(today)}</small></h2>
-      <div class="big-prog"><b>${done}</b>／${tot} 項已記錄</div><div class="bar"><i style="width:${tot ? Math.round(done / tot * 100) : 0}%"></i></div>
-      <p><a class="btn primary" href="#/today">${icon('check', 16)}開始勾選</a></p></section>
-    <section class="card"><h2>待處理</h2>
-      ${noAssess.length + noPlan.length + ending.length ? `<ul class="todo">${noAssess.map(c => li(c, '尚未評估', `#/assess/new/${c.id}`, 'primary')).join('')}${noPlan.map(c => li(c, '已評估，尚未開立介入計畫', `#/client/${c.id}/plan`, 'primary')).join('')}${ending.map(({ c, p }) => li(c, `計畫將於 ${rocDate(p.endDate)} 結束，請再評估`, `#/assess/new/${c.id}`)).join('')}</ul>` : empty('目前沒有待處理事項')}
-    </section></div>
-  <div class="grid2">
-    <section class="card"><h2>團體參與人數</h2>${Object.keys(grpCount).length ? `<div class="kpis sm">${Object.entries(grpCount).map(([t, n]) => `<div class="kpi"><div class="k-n">${n}</div><div class="k-l">${esc(t)}</div></div>`).join('')}</div>` : empty('尚無團體介入')}</section>
+  const missN = missed.reduce((s, x) => s + x.n, 0), missDay = missed.map(x => x.last).sort().at(-1);
+  const dayLbl = d => `${rocDate(d).slice(-5)}（週${WEEKDAYS[weekday(d)]}）`;
+  const li = (c, t, h, k, lbl = '前往') => `<li><span class="tt"><a href="#/client/${c.id}"><b>${esc(c.name)}</b></a> ${isRes() && c.bed ? `<small class="muted">${esc(c.bed)}</small>` : ''} <small class="muted">${t}</small></span>${/^#/.test(h) ? `<a class="btn sm ${k || ''}" href="${h}">${lbl}</a>` : btn(lbl, h, { k:'sm ' + (k || '') })}</li>`;
+  const todos = [...noAssess.map(c => li(c, '尚未評估', `#/assess/new/${c.id}`, 'primary', '進行初評')), ...noPlan.map(c => li(c, '已評估，尚未開立介入計畫', `#/client/${c.id}/plan`, 'primary', '開立計畫')),
+    ...ending.map(({ c, p }) => li(c, p.endDate < today ? `計畫已於 ${rocDate(p.endDate)} 到期，請再評估` : `計畫將於 ${rocDate(p.endDate)} 結束，請安排再評估`, `#/assess/new/${c.id}`, '', '再評估')),
+    ...missed.map(x => li(x.c, `近 7 天有 ${x.n} 項排定但未記錄`, `S.day='${x.last}';App.go('#/today')`, '', '補登')),
+    ...noConsent.map(c => li(c, '尚未記錄參與同意書簽署日期', `#/client/${c.id}/export`, '', '同意書'))];
+  const flow = `<div class="flow5">${[['評估', '最想做到的事＋功能'], ['開立計畫', '目標＋個別＋團體'], ['每日勾選', '✓ △ ✕ 一點就存'], ['再評／修正', '看趨勢、調整計畫'], ['結案報告', 'PDF／Word／PPT']].map(([t, d], i) => `<span class="f5"><span class="sn">${i + 1}</span><span><b>${t}</b><small>${d}</small></span></span>`).join('<span class="fa">→</span>')}</div>`;
+  const folder = Folder.supported && !Folder.connected && !(() => { try { return localStorage.getItem('rehabl:folderLater'); } catch(e){ return ''; } })() ? `<section class="card guide"><h2>📁 連接資料夾</h2>${folderCardHTML(true)}</section>` : '';
+  const todayCard = `<section class="card"><h2>今日勾選 <small>${rocDate(today)}（${wd}）｜個別＋團體</small></h2>
+      ${tot ? `<div class="big-prog"><b>${done}</b>／${tot} 項已記錄${done === tot ? '　<span class="card-done">✓ 全部完成</span>' : ''}</div><div class="bar"><i style="width:${Math.round(done / tot * 100)}%"></i></div>
+        <p><a class="btn primary lg" href="#/today" onclick="S.day=null">${icon('check', 16)}${done ? (done === tot ? '查看今日紀錄' : `繼續勾選（還有 ${tot - done} 項）`) : '開始勾選'}</a></p>`
+      : `<p class="muted">${plans ? `今天（${wd}）沒有排定的項目。` : '尚未開立介入計畫，開立後這裡會出現每天要勾選的項目。'}</p>`}
+      ${missN ? `<p class="miss-note">⚠ 近 7 天有 <b>${missN}</b> 項排定但未記錄　${btn(`補登 ${dayLbl(missDay)}`, `S.day='${missDay}';App.go('#/today')`, { k:tot ? 'sm' : 'primary' })}</p>` : ''}</section>`;
+  const todoCard = `<section class="card"><h2>待處理 ${todos.length ? `<small>${todos.length} 件</small>` : ''}</h2>${todos.length ? `<ul class="todo">${todos.join('')}</ul>` : empty(cs.length ? '✓ 目前沒有待處理事項' : '尚無資料')}</section>`;
+  const startCard = `<section class="card guide"><h2>還沒有${term()}資料</h2><p>可以先載入 <b>3 個模擬個案</b>，看看從評估、開立計畫、每日勾選到再評估修正的完整流程；看完可一鍵清除。</p><div class="btn-row">${btn('載入 3 個模擬個案', 'loadDemo()', { k:'primary', i:'users' })}<a class="btn" href="#/clients">直接新增${term()}</a></div></section>`;
+  const bottom = `<div class="grid2">
+    <section class="card"><h2>團體參與人數 <small>執行中計畫</small></h2>${Object.keys(grpCount).length ? `<div class="grp-count">${Object.entries(grpCount).map(([t, n]) => `<div class="gc">${thumb(GROUP_IMG[t] || GROUP_IMG._, 'sm')}<span>${esc(t)}</span><b>${n} 人</b></div>`).join('')}</div>` : empty('尚無團體介入')}</section>
     <section class="card"><h2>空白表單 <small>直接印出，手寫勾選</small></h2><div class="exp-row"><span>空白復能評估表</span>${exportBar('blankAssess', () => assessDoc(null, null))}</div><div class="exp-row"><span>空白復能計畫參與同意書</span>${exportBar('blankConsent', () => consentDoc(null))}</div></section></div>`;
+  // 已有個案：先看今天要做什麼；還沒有個案：先看流程與開始方式
+  return cs.length ? `<div class="grid2">${todayCard}${todoCard}</div>${demoGuideHTML()}${folder}${flow}${bottom}` : `${flow}${folder}${startCard}${bottom}`;
 }
 function setOrgType(t){
   const from = Store.DB.meta.orgType; if (from === t) return;

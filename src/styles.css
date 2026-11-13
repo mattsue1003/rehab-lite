@@ -168,7 +168,10 @@ textarea.inp{resize:vertical}
 .chart-empty{color:var(--muted);padding:30px;text-align:center}
 /* editor */
 .edit-layout{display:grid;grid-template-columns:1fr 260px;gap:16px;align-items:start}
-.edit-side .sticky{position:sticky;top:130px}
+.edit-side{align-self:stretch}.edit-side .sticky{position:sticky;top:130px;display:flex;flex-direction:column;gap:12px;max-height:calc(100vh - 146px);overflow-y:auto}.edit-side .sticky .card{margin:0}
+.edit-main > .card{scroll-margin-top:130px}
+.sec-nav{display:flex;flex-direction:column;gap:2px;padding:12px}.sec-nav h3{margin:0 0 4px;font-size:13px;color:var(--muted);font-weight:500}
+.sec-nav button{all:unset;cursor:pointer;padding:4px 10px;border-radius:8px;font-size:14px;color:var(--text)}.sec-nav button:hover,.sec-nav button:focus-visible{background:var(--pri-l);color:var(--pri-d)}
 .ls{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--line);font-size:14px}.ls b{font-variant-numeric:tabular-nums}.ls small{color:var(--muted);font-weight:400}
 .ls.flag b{color:var(--err)}
 .sugg{list-style:none;padding:0;margin:0 0 12px}.sugg li{padding:6px 0;border-bottom:1px dashed var(--line)}
@@ -365,3 +368,18 @@ table.copm td:nth-child(2){min-width:220px;white-space:normal}
 .grp-row{border-bottom:1px dashed var(--line);padding:6px 0}.grp-row .pills.sm{font-size:13px;color:var(--muted);align-items:center}
 .sign-pref{display:inline-flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:4px}
 .flow-warn{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--warn-l);border-radius:10px;padding:6px 10px;font-size:14px}
+
+/* ---- UX 整理：首頁流程列、待辦、名冊、評估表 ---- */
+.flow5{display:flex;align-items:center;gap:8px;overflow-x:auto;padding:12px 16px;margin-bottom:16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
+.flow5 .f5{display:flex;align-items:center;gap:8px;flex:1 0 auto}.flow5 .f5 > span:last-child{display:flex;flex-direction:column;line-height:1.3}
+.flow5 b{font-size:15px}.flow5 small{color:var(--muted);font-size:12px}.flow5 .fa{color:var(--muted);flex:none}
+.flow5 .sn{flex:none;display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--pri);color:#fff;font-size:13px;font-weight:700}
+.btn.lg{padding:12px 22px;font-size:17px}
+.miss-note{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--warn-l);border-radius:10px;padding:8px 12px;margin:10px 0 0;font-size:14px}
+.todo li .btn{flex:none}
+.grp-count{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+.grp-count .gc{display:flex;align-items:center;gap:10px;background:var(--surface2);border-radius:12px;padding:6px 12px 6px 6px}.grp-count .gc span{flex:1}.grp-count .gc b{color:var(--pri-d)}
+.icon-btn.del{color:var(--muted);opacity:.55}.icon-btn.del:hover,.icon-btn.del:focus-visible{color:var(--err);opacity:1}
+.exp-cell{white-space:nowrap}.exp-cell small{display:block;margin-bottom:4px}.exp-cell .btn{padding:5px 9px;font-size:13px}
+table.copm td .prev{display:block;width:max-content;margin:4px 0 0}
+@media (max-width:760px){.flow5{padding:10px 12px}.flow5 small{display:none}.btn.lg{width:100%;justify-content:center}}

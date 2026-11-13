@@ -63,7 +63,7 @@ function assessDoc(a, c){
 }
 
 /* ---------- 復能介入計畫書（個別＋團體＋輔具） ---------- */
-function planItems(pl){ return (pl.items || []).map(it => ({ img:it.img, name:it.name, type:it.type, dose:it.dose, freq:freqText(it), executor:it.executor, how:it.how, steps:it.steps, caution:it.caution })); }
+function planItems(pl){ return (pl.items || []).map(it => ({ img:itemImg(it), name:it.name, type:it.type, dose:it.dose, freq:freqText(it), executor:it.executor, how:it.how, steps:it.steps, caution:it.caution })); }
 function planDoc(pl){
   const c = Store.get('clients', pl.clientId), a = pl.assessmentId ? Store.get('assessments', pl.assessmentId) : null;
   const blocks = [clientKV(c, [['計畫期間', `${rocDate(pl.startDate)} ～ ${rocDate(pl.endDate)}`], ['擬定者', `${pl.author || ''}${pl.role ? '（' + pl.role + '）' : ''}`]])];
@@ -73,7 +73,7 @@ function planDoc(pl){
   if ((pl.goals || []).length) blocks.push({ t:'h', text:'復能目標' }, { t:'table', head:['#', '復能目標（時限＋方式＋協助程度＋生活情境與意義＋可測量）', '目前狀況'], widths:[0.4, 6.4, 2.6], center:[0], rows:pl.goals.map((g, i) => [i + 1, g.text, g.baseline || '']) });
   const items = planItems(pl);
   if (items.length) blocks.push({ t:'h', text:`個別介入（${items.length} 項）` }, { t:'items', items });
-  if ((pl.groups || []).length) blocks.push({ t:'h', text:'團體介入' }, { t:'table', head:['團體', '頻率', '備註'], widths:[2, 2, 5], rows:pl.groups.map(g => [g.type, g.freq || '', g.note || '']) });
+  if ((pl.groups || []).length) blocks.push({ t:'h', text:'團體介入' }, { t:'table', head:['圖示', '團體', '頻率／參加日', '備註'], widths:[1.6, 2, 2.4, 3.4], rows:groupItems(pl).map((g, i) => [{ img:g.img }, g.name, `${g.dose || ''}\n${daysText(g.days)}`.trim(), pl.groups[i].note || '']) });
   if ((pl.devices || []).length) blocks.push({ t:'h', text:'建議評估輔具' }, { t:'p', text:pl.devices.map(d => `・${d}${DEVICES[d] ? '：' + DEVICES[d].s : ''}`).join('\n') }, { t:'p', small:true, text:'輔具操作方式與補助資訊可查「長照輔具資料庫」：' + DEVICE_DB_URL });
   if (pl.note) blocks.push({ t:'h', text:'備註' }, { t:'p', text:pl.note });
   blocks.push({ t:'sign', items:['擬定者', `${term()}／家屬`, '執行人員'] });
@@ -93,7 +93,7 @@ function indivCheckDoc(pl, o){
   if (o.big) {
     return { title:'我的復能檢核表', sub:`${c.name}｜${range}`, big:true, landscape:true, blocks:[
       { t:'p', text:'做完請在格子打 ✓，沒做完打 △，沒有做打 ✕' },
-      { t:'table', head:['圖示', '我的練習', ...dates.map(dh)], widths:[2.2, 2.6, ...dates.map(() => 1)], center:dates.map((_, i) => i + 2), fs:13, rows:items.map(it => [{ img:it.img }, `${it.name}\n${it.dose || ''}`, ...dates.map(d => cellFor(it, d))]) },
+      { t:'table', head:['圖示', '我的練習', ...dates.map(dh)], widths:[2.2, 2.6, ...dates.map(() => 1)], center:dates.map((_, i) => i + 2), fs:13, rows:items.map(it => [{ img:itemImg(it) }, `${it.name}\n${it.dose || ''}`, ...dates.map(d => cellFor(it, d))]) },
       { t:'p', text:'今天的感覺／想跟治療師說的話：\n' + blankLines(2) }] };
   }
   const head = o.mode === 'month' ? ['項目／劑量', ...dates.map(d => String(+d.slice(8)))] : ['項目', '劑量／頻率', '執行者', ...dates.map(dh)];

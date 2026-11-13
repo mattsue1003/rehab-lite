@@ -11,17 +11,18 @@ const allItems = () => [...LIBRARY, ...Store.all('library')];
 const findItem = id => allItems().find(e => e.id === id);
 const defaultDays = () => isRes() ? [1, 2, 3, 4, 5, 6, 7] : [1, 2, 3, 4, 5];
 const thumb = (src, cls = '') => src ? `<img class="thumb ${cls}" src="${esc(src)}" alt="" loading="lazy">` : `<span class="thumb ${cls} noimg">${icon('heart', 18)}</span>`;
-const groupItems = p => (p?.groups || []).map(g => ({ id:'g:' + g.type, name:g.type, type:'團體', dose:g.freq || '', days:g.days?.length ? g.days : defaultDays(), times:1, img:'', group:true, executor:'團體帶領者' }));
+const groupItems = p => (p?.groups || []).map(g => ({ id:'g:' + g.type, name:g.type, type:'團體', dose:g.freq || '', days:g.days?.length ? g.days : defaultDays(), times:1, img:GROUP_IMG[g.type] || GROUP_IMG._, group:true, executor:'團體帶領者' }));
+/* 項目圖片：自己的圖 → 項目庫原圖（舊計畫建立時圖片尚未補齊）→ 類別代表圖，確保每個復能項目都有圖 */
+const itemImg = it => it?.img || (it?.exId && findItem(it.exId)?.img) || (it?.group ? GROUP_IMG[it.name] || GROUP_IMG._ : CAT_IMG[it?.cat] || CAT_IMG['其他']);
 const checkables = p => [...(p?.items || []), ...groupItems(p)];
 const stLabel = (it, s) => it?.group ? { ok:'有參加', part:'部分參與', skip:'未參加' }[s] : ST_LABEL[s];
-const groupThumb = cls => `<span class="thumb ${cls || ''} grp-thumb">${icon('users', 18)}</span>`;
 const scheduled = (pl, it, d) => d >= pl.startDate && d <= pl.endDate && (it.days || []).includes(weekday(d));
 
 function planStats(pl, from, to){
   let exp = 0, ok = 0, part = 0, skip = 0;
   const recs = new Map(Store.all('checks').filter(x => x.clientId === pl.clientId).map(x => [x.itemId + '|' + x.date, x]));
   const end = [to, pl.endDate, todayISO()].sort()[0];
-  for (let d = from > pl.startDate ? from : pl.startDate; d <= end; d = addDays(d, 1)) for (const it of pl.items || []) if ((it.days || []).includes(weekday(d))) { exp++; const r = recs.get(it.id + '|' + d); if (r?.status === 'ok') ok++; else if (r?.status === 'part') part++; else if (r?.status === 'skip') skip++; }
+  for (let d = from > pl.startDate ? from : pl.startDate; d <= end; d = addDays(d, 1)) for (const it of checkables(pl)) if ((it.days || []).includes(weekday(d))) { const r = recs.get(it.id + '|' + d); if (!r && d === todayISO()) continue; exp++; if (r?.status === 'ok') ok++; else if (r?.status === 'part') part++; else if (r?.status === 'skip') skip++; }
   return { exp, ok, part, skip, rate:exp ? Math.round((ok + part * 0.5) / exp * 100) : null };
 }
 function setCheck(planId, itemId, d, status){
@@ -46,7 +47,7 @@ function pageToday(){
     tot += its.length; done += st.filter(Boolean).length;
     return `<article class="tcard" id="tc-${c.id}"><header><div class="av">${esc(c.name.slice(0, 1))}</div><div class="tn"><b>${esc(c.name)}</b><small>${esc([isRes() ? c.bed : '', c.caution].filter(Boolean).join('・'))}</small></div>
       ${st.every(Boolean) ? '<span class="card-done">✓ 今日全部已記錄</span>' : `<span class="card-prog">已記錄 <b>${st.filter(Boolean).length}</b>／${its.length}</span>${btn('其餘全部完成', `allDone('${p.id}','${d}')`, { k:'sm' })}`}</header>
-      <div class="tiles">${its.map((it, i) => { const s = st[i], r = s ? checkRec(p.id, it.id, d) : null; return `<button class="tile ${s ? 's-' + s : ''} ${it.group ? 'is-grp' : ''}" onclick="tapTile('${p.id}','${it.id}','${d}')" aria-label="${esc(it.name)}：${s ? stLabel(it, s) : '尚未記錄'}">${it.group ? groupThumb() : thumb(it.img)}<span class="t-txt"><b>${it.group ? '<span class="grp-tag">團體</span>' : ''}${esc(it.name)}</b><small>${esc(it.dose || '')}${it.times > 1 ? `｜每日 ${it.times} 次` : ''}</small><span class="t-rec">${s ? `<b>${SYM[s]} ${stLabel(it, s)}</b>${r?.by ? ' · ' + esc(r.by) : ''}` : '尚未記錄'}</span></span><span class="t-st">${s ? SYM[s] : ''}</span></button>`; }).join('')}</div></article>`;
+      <div class="tiles">${its.map((it, i) => { const s = st[i], r = s ? checkRec(p.id, it.id, d) : null; return `<button class="tile ${s ? 's-' + s : ''} ${it.group ? 'is-grp' : ''}" onclick="tapTile('${p.id}','${it.id}','${d}')" aria-label="${esc(it.name)}：${s ? stLabel(it, s) : '尚未記錄'}">${thumb(itemImg(it))}<span class="t-txt"><b>${it.group ? '<span class="grp-tag">團體</span>' : ''}${esc(it.name)}</b><small>${esc(it.dose || '')}${it.times > 1 ? `｜每日 ${it.times} 次` : ''}</small><span class="t-rec">${s ? `<b>${SYM[s]} ${stLabel(it, s)}</b>${r?.by ? ' · ' + esc(r.by) : ''}` : '尚未記錄'}</span></span><span class="t-st">${s ? SYM[s] : ''}</span></button>`; }).join('')}</div></article>`;
   }).join('');
   return `<div class="toolbar"><button class="btn" onclick="S.day=addDays('${d}',-1);route()">${icon('back', 16)}前一天</button><input type="date" class="inp" value="${d}" onchange="S.day=this.value;route()" aria-label="日期"><button class="btn" onclick="S.day=addDays('${d}',1);route()">後一天</button>${d !== todayISO() ? btn('回到今天', 'S.day=null;route()') : ''}
     <span class="sp"></span><input class="inp" placeholder="搜尋姓名${isRes() ? '／床號' : ''}" value="${esc(todayQ)}" onchange="todayQ=this.value;route()" aria-label="搜尋"></div>
@@ -66,7 +67,14 @@ function todayEmpty(d){
 const ST_LABEL = { ok:'完成', part:'部分完成', skip:'未執行' };
 const hhmm = iso => { if (!iso) return ''; const t = new Date(iso); return String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0'); };
 const checkRec = (planId, itemId, d) => { const cid = Store.get('plans', planId)?.clientId; return Store.all('checks').find(x => x.clientId === cid && x.itemId === itemId && x.date === d); };
+/* 還沒填記錄者就開始勾選時，問一次姓名（可略過，本次開啟期間不再詢問） */
+function ensureWho(){
+  if (App.currentUserId() || S._whoAsked) return; S._whoAsked = true;
+  const v = (window.prompt('請輸入您的姓名（記錄者），之後每一筆勾選都會記上您的名字。\n\n可按「取消」略過，稍後在右上角填寫。') || '').trim();
+  if (v) { try { localStorage.setItem('rehabl:who', v); } catch(e){} const el = document.querySelector('.who input'); if (el) el.value = v; }
+}
 async function tapTile(planId, itemId, d){
+  ensureWho();
   const p = Store.get('plans', planId), it = checkables(p).find(x => x.id === itemId), c = Store.get('clients', p.clientId);
   const prev = curStatus(planId, itemId, d), next = NEXT[prev];
   setCheck(planId, itemId, d, next); refreshCard(p.clientId);
@@ -75,6 +83,7 @@ async function tapTile(planId, itemId, d){
   toast(`已儲存：${c.name}・${it.name} → ${next ? SYM[next] + ' ' + stLabel(it, next) : '已取消記錄'}`, 'ok', { label:'復原', fn:async () => { setCheck(planId, itemId, d, prev); await Store.flush(); refreshCard(p.clientId); toast(`已復原：${it.name} → ${prev ? stLabel(it, prev) : '尚未記錄'}`, 'ok'); } });
 }
 async function allDone(planId, d){
+  ensureWho();
   const p = Store.get('plans', planId), c = Store.get('clients', p.clientId);
   const todo = checkables(p).filter(it => scheduled(p, it, d) && !curStatus(p.id, it.id, d));
   todo.forEach(it => setCheck(p.id, it.id, d, 'ok')); refreshCard(p.clientId);
@@ -91,8 +100,8 @@ function pageClients(){
   return `<div class="toolbar"><input class="inp" placeholder="搜尋姓名${isRes() ? '／床號' : ''}" value="${esc(cFilter.q)}" oninput="cFilter.q=this.value;rerenderList()" aria-label="搜尋">
     <select class="inp" onchange="cFilter.status=this.value;rerenderList()" aria-label="狀態">${['服務中', '結案', ''].map(s => `<option value="${s}" ${cFilter.status === s ? 'selected' : ''}>${s || '全部'}</option>`).join('')}</select>
     <span class="sp"></span>${Store.all('clients').some(c => c.demo) ? btn('清除模擬個案', 'clearDemoClients()', { k:'danger ghost', i:'trash' }) : ''}${btn('新增' + term(), 'editClient()', { k:'primary', i:'plus' })}</div>
-  <section class="card flush"><div class="tbl-wrap"><table class="tbl" id="ctable"><thead><tr><th>姓名</th>${isRes() ? '<th>房號／床號</th>' : ''}<th>最近評估</th><th>巴氏</th><th>介入計畫</th><th>團體</th><th>本週執行</th><th></th></tr></thead><tbody>
-  ${list.map(c => { const a = Logic.lastAssessment(c.id), p = activePlan(c.id), st = p ? planStats(p, ws, today) : null; return `<tr class="click" onclick="App.go('#/client/${c.id}')"><td><b>${esc(c.name)}</b></td>${isRes() ? `<td>${esc(c.bed || '')}</td>` : ''}<td>${a ? rocDate(a.date) + ' ' + badge(a.type) : badge('未評估', 'amber')}</td><td>${scoreBarthel(a)?.total ?? '—'}</td><td>${p ? `個別 ${(p.items || []).length} 項，至 ${rocDate(p.endDate)}` : badge('未開立', 'amber')}</td><td><small>${esc((p?.groups || []).map(g => g.type.replace('團體', '')).join('、'))}</small></td><td>${st?.exp ? `<div class="mini-bar"><i style="width:${st.rate}%"></i></div>${st.ok + st.part}/${st.exp}` : '—'}</td><td class="nowrap"><button type="button" class="btn sm danger ghost" onclick="event.stopPropagation();deleteClient('${c.id}')" title="刪除${esc(c.name)}">${icon('trash', 14)}刪除</button></td></tr>`; }).join('') || `<tr><td colspan="8">${empty(`尚無${term()}資料`)}</td></tr>`}
+  <section class="card flush"><div class="tbl-wrap"><table class="tbl" id="ctable"><thead><tr><th>姓名</th>${isRes() ? '<th>房號／床號</th>' : ''}<th>目前階段</th><th>最近評估</th><th>巴氏</th><th>介入計畫</th><th>團體</th><th>本週執行</th><th></th></tr></thead><tbody>
+  ${list.map(c => { const a = Logic.lastAssessment(c.id), p = activePlan(c.id), st = p ? planStats(p, ws, today) : null; return `<tr class="click" onclick="App.go('#/client/${c.id}')"><td><b>${esc(c.name)}</b></td>${isRes() ? `<td>${esc(c.bed || '')}</td>` : ''}<td>${badge(...STAGES[clientStage(c)])}${c.status !== '結案' && !c.consentDate ? ' <small class="warn-t" title="尚未記錄同意書簽署日期">同意書未簽</small>' : ''}</td><td>${a ? rocDate(a.date) + ' ' + badge(a.type) : '—'}</td><td>${scoreBarthel(a)?.total ?? '—'}</td><td>${p ? `v${p.version || 1}｜個別 ${(p.items || []).length} 項，至 ${rocDate(p.endDate)}` : '—'}</td><td><small>${esc((p?.groups || []).map(g => g.type.replace('團體', '')).join('、'))}</small></td><td>${st?.exp ? `<div class="mini-bar"><i style="width:${st.rate}%"></i></div>${st.ok + st.part}/${st.exp}` : '—'}</td><td class="nowrap"><button type="button" class="icon-btn del" onclick="event.stopPropagation();deleteClient('${c.id}')" title="刪除${esc(c.name)}" aria-label="刪除${esc(c.name)}">${icon('trash', 16)}</button></td></tr>`; }).join('') || `<tr><td colspan="9">${empty(cFilter.q || cFilter.status === '結案' ? '找不到符合條件的資料' : `尚無${term()}資料`, cFilter.q || cFilter.status === '結案' ? '' : btn('新增' + term(), 'editClient()', { k:'primary', i:'plus' }))}</td></tr>`}
   </tbody></table></div></section>`;
 }
 function rerenderList(){ const t = document.createElement('div'); t.innerHTML = pageClients(); $('#ctable').replaceWith(t.querySelector('#ctable')); }
@@ -118,6 +127,20 @@ function pageClient(id, tab){
   ${nextStepHTML(c)}
   <div class="tabs">${CTABS.map(([k, l], i) => `<a href="#/client/${c.id}/${k}" class="${tab === k ? 'on' : ''}"><span class="tn-n">${i + 1}</span>${l}</a>`).join('')}</div>${body(c)}`;
 }
+const STAGES = [['待初評', 'amber'], ['待開立計畫', 'amber'], ['執行中', 'green'], ['待再評', 'amber'], ['已結案', '']];
+function clientStage(c){
+  const as = Logic.assessmentsOf(c.id), p = activePlan(c.id);
+  if (c.status === '結案' || as.some(a => a.type === '結案評估')) return 4;
+  if (!as.length) return 0; if (!p) return 1;
+  return diffDays(todayISO(), p.endDate) <= 14 ? 3 : 2;
+}
+/* 近 7 天（不含今天）排定但沒有記錄的項目：{ n, last }，last 為最近一個有漏記的日期 */
+function missedChecks(p){
+  if (!p) return { n:0, last:'' };
+  const recs = new Set(Store.all('checks').filter(x => x.clientId === p.clientId).map(x => x.itemId + '|' + x.date)); let n = 0, last = '';
+  for (let i = 1; i <= 7; i++) { const d = addDays(todayISO(), -i); for (const it of checkables(p)) if (scheduled(p, it, d) && !recs.has(it.id + '|' + d)) { n++; if (!last) last = d; } }
+  return { n, last };
+}
 function nextStepHTML(c){
   const as = Logic.assessmentsOf(c.id), last = as.at(-1), p = activePlan(c.id), closing = as.filter(a => a.type === '結案評估').at(-1);
   const steps = ['初評', '開立計畫', '每日勾選', '再評／修正', '結案'];
@@ -132,8 +155,8 @@ function nextStepHTML(c){
 }
 function cAssess(c){
   const as = Logic.assessmentsOf(c.id).reverse();
-  return `<section class="card"><h2>評估紀錄 <small>初評、再評、結案</small><span class="sp"></span><a class="btn primary sm" href="#/assess/new/${c.id}">${icon('plus', 14)}${as.length ? '再評估' : '進行初評'}</a>${as.length && c.status !== '結案' ? `<a class="btn sm" href="#/assess/new/${c.id}?type=結案評估">結案評估</a>` : ''}</h2>
-    ${as.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>日期</th><th>類別</th><th>評估者</th><th>巴氏</th><th>TUG</th><th>30秒坐站</th><th>握力</th><th>需復能問題</th><th>輸出</th></tr></thead><tbody>${as.map(a => `<tr><td><a href="#/assess/${a.id}">${rocDate(a.date)}</a></td><td>${badge(a.type)}</td><td>${esc(a.assessor || '')}</td><td>${scoreBarthel(a)?.total ?? '—'}</td><td>${a.phy?.tug || '—'}</td><td>${a.phy?.cs30 ?? '—'}</td><td>${a.phy?.grip || '—'}</td><td><small>${esc((a.problems || []).map(p => p.text).join('、').slice(0, 60))}</small></td><td class="nowrap"><small class="muted">${docNameFor(a)}</small><br>${exportBar('as_' + a.id, () => docForAssessment(Store.get('assessments', a.id)))}</td></tr>`).join('')}</tbody></table></div>` : empty('尚無評估紀錄')}</section>
+  return `<section class="card"><h2>評估紀錄 <small>初評、再評、結案</small><span class="sp"></span>${c.status !== '結案' ? `<a class="btn primary sm" href="#/assess/new/${c.id}">${icon('plus', 14)}${as.length ? '再評估' : '進行初評'}</a>` : ''}</h2>
+    ${as.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>日期</th><th>類別</th><th>評估者</th><th>巴氏</th><th>TUG</th><th>30秒坐站</th><th>握力</th><th title="最想做到的事：自評平均表現（1–10）">想做的事<br><small>平均表現</small></th><th>輸出報告</th></tr></thead><tbody>${as.map(a => `<tr><td><a href="#/assess/${a.id}">${rocDate(a.date)}</a></td><td>${badge(a.type)}</td><td class="nowrap">${esc(a.assessor || '')}</td><td>${scoreBarthel(a)?.total ?? '—'}</td><td>${a.phy?.tug || '—'}</td><td>${a.phy?.cs30 ?? '—'}</td><td>${a.phy?.grip || '—'}</td><td>${copmAvg(a, 'perf') ?? '—'}</td><td class="exp-cell"><small class="muted">${docNameFor(a)}</small>${exportBar('as_' + a.id, () => docForAssessment(Store.get('assessments', a.id)))}</td></tr>`).join('')}</tbody></table></div>` : empty('尚無評估紀錄')}</section>
   ${copmCompare(c)}
   ${as.length > 1 ? assessTrends(c) : ''}`;
 }
@@ -158,8 +181,8 @@ function copmCompare(c){
 }
 function planView(p){
   return `${(p.goals || []).length ? `<p><b>目標：</b>${p.goals.map((g, i) => `${i + 1}. ${esc(g.text)}`).join('　')}</p>` : ''}
-    <h3>個別介入</h3><div class="mini-items">${(p.items || []).map(it => `<div class="mini-item">${thumb(it.img)}<div><b>${esc(it.name)}</b> ${badge(it.type || '')}<small>${esc(it.dose || '')}｜${esc(freqText(it))}｜${esc(it.executor || '')}</small></div></div>`).join('') || '<p class="muted">—</p>'}</div>
-    ${(p.groups || []).length ? `<h3>團體介入</h3><p>${p.groups.map(g => badge(g.type + (g.freq ? '・' + g.freq : ''), 'green')).join(' ')}</p>` : ''}
+    <h3>個別介入</h3><div class="mini-items">${(p.items || []).map(it => `<div class="mini-item">${thumb(itemImg(it))}<div><b>${esc(it.name)}</b> ${badge(it.type || '')}<small>${esc(it.dose || '')}｜${esc(freqText(it))}｜${esc(it.executor || '')}</small></div></div>`).join('') || '<p class="muted">—</p>'}</div>
+    ${(p.groups || []).length ? `<h3>團體介入</h3><div class="mini-items">${groupItems(p).map(g => `<div class="mini-item">${thumb(g.img)}<div><b>${esc(g.name)}</b> ${badge('團體', 'green')}<small>${esc(g.dose || '')}｜${esc(daysText(g.days))}</small></div></div>`).join('')}</div>` : ''}
     ${(p.devices || []).length ? `<h3>建議評估輔具</h3><p>${p.devices.map(d => badge(d)).join(' ')} <a href="${DEVICE_DB_URL}" target="_blank" rel="noopener">查長照輔具資料庫 ↗</a></p>` : ''}`;
 }
 function cPlan(c){
@@ -179,7 +202,7 @@ function cCheck(c){
   return `<div class="toolbar"><button class="btn" onclick="S.week=addDays('${ws}',-7);route()">${icon('back', 16)}上週</button><b>${rocDate(dates[0])} ～ ${rocDate(dates[6])}</b><button class="btn" onclick="S.week=addDays('${ws}',7);route()">下週</button>${ws !== weekStart(todayISO()) ? btn('回到本週', `S.week=null;route()`) : ''}
     <span class="sp"></span><span class="muted">本週 ${st.ok + st.part}/${st.exp}｜累計執行率 ${all.rate ?? '—'}%</span></div>
   <section class="card flush"><div class="tbl-wrap"><table class="ck"><thead><tr><th class="ck-n">項目</th>${dates.map(d => `<th class="${d === todayISO() ? 'today' : ''}">${d.slice(5).replace('-', '/')}<br><small>週${WEEKDAYS[weekday(d)]}</small></th>`).join('')}</tr></thead><tbody>
-  ${checkables(p).map(it => `<tr class="${it.group ? 'ck-grp' : ''}"><th class="ck-n"><div class="ck-it">${it.group ? groupThumb('sm') : thumb(it.img, 'sm')}<div><b>${it.group ? '<span class="grp-tag">團體</span>' : ''}${esc(it.name)}</b><small>${esc(it.dose || '')}｜${esc(it.executor || '')}</small></div></div></th>${dates.map(d => { if (!scheduled(p, it, d)) return '<td class="off">—</td>'; const r = recs.get(it.id + '|' + d); return `<td><button class="ckb ${r ? 's-' + r.status : ''}" onclick="setCheck('${p.id}','${it.id}','${d}',NEXT['${r?.status || ''}']);route()" title="${r ? esc(r.by || '') : '尚未記錄'}" aria-label="${esc(it.name)} ${d}">${r ? SYM[r.status] : ''}</button></td>`; }).join('')}</tr>`).join('')}
+  ${checkables(p).map(it => `<tr class="${it.group ? 'ck-grp' : ''}"><th class="ck-n"><div class="ck-it">${thumb(itemImg(it), 'sm')}<div><b>${it.group ? '<span class="grp-tag">團體</span>' : ''}${esc(it.name)}</b><small>${esc(it.dose || '')}｜${esc(it.executor || '')}</small></div></div></th>${dates.map(d => { if (!scheduled(p, it, d)) return '<td class="off">—</td>'; const r = recs.get(it.id + '|' + d); return `<td><button class="ckb ${r ? 's-' + r.status : ''}" onclick="setCheck('${p.id}','${it.id}','${d}',NEXT['${r?.status || ''}']);route()" title="${r ? esc(r.by || '') : '尚未記錄'}" aria-label="${esc(it.name)} ${d}">${r ? SYM[r.status] : ''}</button></td>`; }).join('')}</tr>`).join('')}
   </tbody></table></div></section>
   ${execTrend(c)}
   <section class="card"><h2>本週備註</h2><textarea class="inp" rows="3" placeholder="未執行原因、反應、進步或異常狀況…" onchange="saveWeekNote('${p.id}','${c.id}','${ws}',this.value)">${esc(note?.note || '')}</textarea>
@@ -238,7 +261,7 @@ function cExport(c){
   ${row(4, '復能結案報告', '服務期間初評與結案的功能比較、歷次目標達成、整體執行率、結案原因與後續建議。',
     clo ? `<div class="exp-row"><span>${rocDate(clo.date)} 結案</span>${exportBar('cl_' + clo.id, () => closingDoc(Store.get('assessments', clo.id)))}</div>` : off(`完成「結案評估」後即可產生${as.length ? `　<a class="btn sm" href="#/assess/new/${c.id}?type=結案評估">進行結案評估</a>` : ''}`))}
   <section class="card"><h2>其他文件</h2>
-    ${p ? `<div class="exp-row"><span>復能介入計畫書（項目附圖；PPT 為一項一頁的衛教投影片）</span>${exportBar('pl_' + p.id, () => planDoc(Store.get('plans', p.id)))}</div>` : ''}
+    ${p ? `<div class="exp-row"><span>復能介入計畫書（個別項目與團體皆附圖）</span>${exportBar('pl_' + p.id, () => planDoc(Store.get('plans', p.id)))}</div>` : ''}
     <div class="exp-row"><span>空白評估表（已帶入姓名，可手寫）</span>${exportBar('ba_' + c.id, () => assessDoc(null, c))}</div></section>`;
 }
 
@@ -248,7 +271,7 @@ function pageAssessEdit(id, cid, type){
   if (id) a = clone(Store.get('assessments', id) || {});
   else {
     const prev = Logic.lastAssessment(cid);
-    a = { clientId:cid, date:todayISO(), type:type || (prev ? '再評' : '初評'), assessor:App.currentUserId(), role:prev?.role || '', adl:{}, iadl:{}, spmsq:{ items:Array(10).fill(''), edu:'' }, phy:{}, pain:{}, physio:'', strength:'', expect:'', problemSel:{}, customProblems:'', summary:'' };
+    a = { clientId:cid, date:todayISO(), type:type || (prev ? '再評' : '初評'), assessor:App.currentUserId() || prev?.assessor || '', role:prev?.role || '', adl:{}, iadl:{}, spmsq:{ items:Array(10).fill(''), edu:'' }, phy:{}, pain:{}, physio:'', strength:'', expect:'', problemSel:{}, customProblems:'', summary:'' };
     if (prev) {
       // 再評：帶入上一次評估（初評或前次再評）內容，只改有變化的部分；體能測試與自評分數需重新施測
       Object.assign(a, { adl:clone(prev.adl || {}), iadl:clone(prev.iadl || {}), spmsq:clone(prev.spmsq || { items:Array(10).fill(''), edu:'' }), pain:clone(prev.pain || {}), physio:prev.physio || '', strength:prev.strength || '', expect:prev.expect || '', phy:{ note:prev.phy?.note || '' } });
@@ -267,12 +290,14 @@ function pageAssessEdit(id, cid, type){
   return pageAssessBody();
 }
 function pageAssessBody(){ setTimeout(() => liveSum(S._ac.c), 0); return assessForm(); }
+function jumpSec(i){ const el = document.getElementById('sec-' + i); if (!el) return; if (el.tagName === 'DETAILS') el.open = true; el.scrollIntoView({ behavior:'smooth', block:'start' }); }
 function carryPhy(){ const pr = S._ac.prev; if (!pr) return; S.edit.phy = { ...clone(pr.phy || {}), note:(S.edit.phy?.note || pr.phy?.note || '') }; S.dirty = true; rerender(pageAssessBody); toast('已帶入前次體能數值，請記得在說明註明「未重測」'); }
 function assessForm(){
   const a = S.edit, { c, prev, id, carried } = S._ac;
   const pv = (v, cur) => prev ? `<span class="prev ${cur !== undefined && String(cur ?? '') !== String(v ?? '') ? 'chg' : ''}">前次：${v ?? '—'}</span>` : '';
-  const sec = (t, body, o = '') => `<section class="card"><h2>${t}${o ? ` <small>${o}</small>` : ''}</h2>${body}</section>`;
-  const opt = (t, body, o, open) => `<details class="card opt" ${open ? 'open' : ''}><summary><h2>${t} <small>${o}</small></h2></summary>${body}</details>`;
+  const navT = [], nav = t => { navT.push(t.replace(/<.*$/, '').replace(/^.*｜/, '').trim()); return navT.length - 1; };
+  const sec = (t, body, o = '') => `<section class="card" id="sec-${nav(t)}"><h2>${t}${o ? ` <small>${o}</small>` : ''}</h2>${body}</section>`;
+  const opt = (t, body, o, open) => `<details class="card opt" id="sec-${nav(t + '（選填）')}" ${open ? 'open' : ''}><summary><h2>${t} <small>${o}</small></h2></summary>${body}</details>`;
   const hasPain = a.pain?.nrs !== '' && a.pain?.nrs != null || !!(a.pain?.site || a.physio || a.strength || a.expect);
   const hasIadl = Object.values(a.iadl || {}).some(v => v !== '' && v != null), hasSp = (a.spmsq?.items || []).some(Boolean);
   const ph = (k, l, u, h) => F.field(`${l}（${u}）`, F.num('phy.' + k, { min:0 }) + pv(prev?.phy?.[k]), { hint:h });
@@ -291,7 +316,7 @@ function assessForm(){
       ${F.field('身體與生活現況', F.text('physio', { rows:2 }), { cls:'span2' })}${F.field('優勢與興趣', F.text('strength', { rows:2, ph:'例：喜歡唱歌、以前是農夫（可作為團體安排參考）' }))}${F.field(`${term()}／家屬期待`, F.text('expect', { rows:2, ph:'例：想自己走去廁所' }))}</div>`, '選填', hasPain)}
     ${a.type === '結案評估' ? sec('結案', `<div class="form-grid">${F.field('結案原因', F.select('closeReason', CLOSE_REASONS), { req:true })}<div></div>${F.field('後續建議（居家延續、轉介、維持方式）', F.text('followUp', { rows:3, ph:'例：維持每天晚飯後坐站 10 下；持續參加運動團體；轉介社區關懷據點' }), { cls:'span2' })}</div><p class="hint">儲存後：執行中的計畫會結束、${term()}狀態改為「結案」，並可產生「復能結案報告」。</p>`) : ''}
     ${sec('評估結果：需復能的問題', `<p class="hint">依評估結果自動建議；勾選的問題會帶入介入計畫，並附上建議的個別項目、團體與輔具。</p><div id="sugg">${suggHTML(c)}</div>${F.field('其他問題（每行一項）', F.text('customProblems', { rows:2 }))}${F.field('評估摘要', F.text('summary', { rows:2 }))}`)}
-  </div><aside class="edit-side"><div class="card sticky" id="live"></div></aside></div>`;
+  </div><aside class="edit-side"><div class="sticky"><div class="card" id="live"></div><nav class="card sec-nav" aria-label="快速跳到"><h3>快速跳到</h3>${navT.map((t, i) => `<button type="button" onclick="jumpSec(${i})">${esc(t)}</button>`).join('')}</nav></div></aside></div>`;
 }
 function copmHTML(prev){
   const a = S.edit, pr = act => prev ? copmRows(prev).find(x => x.activity === act) : null;
@@ -390,7 +415,7 @@ function planHTML(){
     ${btn('新增目標', `S.edit.goals.push(newGoal());rerender(planHTML)`, { k:'sm', i:'plus' })}</section>
   <section class="card"><h2>個別介入 <small>運動、日常生活訓練｜會出現在今日勾選與檢核表</small><span class="sp"></span>${btn('從項目庫挑選', 'openPicker()', { k:'primary sm', i:'plus' })}</h2>
     ${sug.length ? `<div class="notice">評估建議：${sug.map(e => `<button type="button" class="chip hl" onclick="addItem('${e}')">${icon('plus', 14)}${esc(findItem(e)?.name || e)}</button>`).join('')} <button type="button" class="chip" onclick="(S.edit._sug||[]).forEach(e=>S.edit.items.some(it=>it.exId===e)||S.edit.items.push(mkItem(e)));S.dirty=true;rerender(planHTML)">全部加入</button></div>` : ''}
-    <div class="items-edit">${p.items.map((it, i) => `<div class="item-card"><div class="ic-h">${thumb(it.img)}<b>${i + 1}.</b>${F.input(`items.${i}.name`, { cls:'grow' })}${F.select(`items.${i}.type`, ['運動', '日常生活訓練', '其他'], { blank:false })}${btn('✕', `S.edit.items.splice(${i},1);rerender(planHTML)`, { k:'sm ghost', title:'移除' })}</div>
+    <div class="items-edit">${p.items.map((it, i) => `<div class="item-card"><div class="ic-h">${thumb(itemImg(it))}<b>${i + 1}.</b>${F.input(`items.${i}.name`, { cls:'grow' })}${F.select(`items.${i}.type`, ['運動', '日常生活訓練', '其他'], { blank:false })}${btn('✕', `S.edit.items.splice(${i},1);rerender(planHTML)`, { k:'sm ghost', title:'移除' })}</div>
       <div class="form-grid g3">${F.field('劑量', F.input(`items.${i}.dose`))}${F.field('執行者', F.select(`items.${i}.executor`, EXECUTORS, { blank:false }))}${F.field('每日次數', F.select(`items.${i}.times`, [1, 2, 3].map(n => [n, n + ' 次']), { t:'num', blank:false }))}
       ${F.field('執行日', `<div class="pills">${[1, 2, 3, 4, 5, 6, 7].map(w => F.checkArr(`items.${i}.days`, w, WEEKDAYS[w], true)).join('')}</div>`, { cls:'span3' })}</div>
       <details class="more"><summary>執行方式與注意事項</summary><div class="form-grid">${F.field('說明', F.text(`items.${i}.how`, { rows:2 }))}${F.field('步驟', F.text(`items.${i}.steps`, { rows:2 }))}${F.field('注意事項', F.text(`items.${i}.caution`, { rows:2 }), { cls:'span2' })}</div></details></div>`).join('') || '<p class="muted">按「從項目庫挑選」加入運動或日常生活訓練。</p>'}</div>
@@ -398,7 +423,7 @@ function planHTML(){
   <section class="card"><h2>團體介入 <small>勾選要參加的團體即可，不需填活動紀錄</small></h2>
     <div class="pills">${types.map(t => { const on = p.groups.some(g => g.type === t); return `<label class="pill"><input type="checkbox" ${on ? 'checked' : ''} onchange="toggleGroup('${esc(t)}',this.checked)"><span>${esc(t)}</span></label>`; }).join('')}
       <input class="inp sm" placeholder="其他團體，按 Enter" onkeydown="if(event.key==='Enter'&&this.value.trim()){toggleGroup(this.value.trim(),true)}"></div>
-    ${p.groups.length ? `<div class="grp-rows">${p.groups.map((g, i) => `<div class="grp-row"><div class="row-edit"><b class="w8">${esc(g.type)}</b>${F.input(`groups.${i}.freq`, { ph:'頻率，例：每週2次' })}${F.input(`groups.${i}.note`, { ph:'備註（選填）' })}</div><div class="pills sm">參加日：${[1, 2, 3, 4, 5, 6, 7].map(w => F.checkArr(`groups.${i}.days`, w, WEEKDAYS[w], true)).join('')}</div></div>`).join('')}</div>` : ''}</section>
+    ${p.groups.length ? `<div class="grp-rows">${p.groups.map((g, i) => `<div class="grp-row"><div class="row-edit">${thumb(GROUP_IMG[g.type] || GROUP_IMG._, 'sm')}<b class="w8">${esc(g.type)}</b>${F.input(`groups.${i}.freq`, { ph:'頻率，例：每週2次' })}${F.input(`groups.${i}.note`, { ph:'備註（選填）' })}</div><div class="pills sm">參加日：${[1, 2, 3, 4, 5, 6, 7].map(w => F.checkArr(`groups.${i}.days`, w, WEEKDAYS[w], true)).join('')}</div></div>`).join('')}</div>` : ''}</section>
   <section class="card"><h2>建議評估輔具 <small>資料來自長照輔具資料庫</small><span class="sp"></span><a class="btn sm" href="${DEVICE_DB_URL}" target="_blank" rel="noopener">開啟長照輔具資料庫 ↗</a></h2>
     <div class="pills">${[...new Set([...sugDev, ...(S.allDev ? Object.keys(DEVICES) : [])])].map(d => `<label class="pill" title="${esc(DEVICES[d]?.s || '')}"><input type="checkbox" ${p.devices.includes(d) ? 'checked' : ''} onchange="toggleDev('${esc(d)}',this.checked)"><span>${sugDev.includes(d) ? '★ ' : ''}${esc(d)}</span></label>`).join('')}</div>
     <p class="hint">★＝依本次評估建議。滑鼠停在項目上可看說明。 <a href="javascript:void(0)" onclick="S.allDev=!S.allDev;rerender(planHTML)">${S.allDev ? '只顯示建議項目' : `顯示全部 ${Object.keys(DEVICES).length} 項常用輔具`}</a></p></section>
@@ -461,7 +486,7 @@ function pickerBody(){
     <div class="pills cats">${POSTURES.map(([v, l]) => `<label class="pill sm post"><input type="radio" name="pp" ${pick.post === v ? 'checked' : ''} onchange="pick.post='${v}';refreshPicker()"><span>${l}</span></label>`).join('')}</div>
     <div class="pills cats">${['', ...ITEM_CATS].filter(c => !c || allItems().some(e => e.cat === c && (!pick.type || e.type === pick.type))).map(c => `<label class="pill sm"><input type="radio" name="pc" ${pick.cat === c ? 'checked' : ''} onchange="pick.cat='${c}';refreshPicker()"><span>${c || '全部分類'}</span></label>`).join('')}</div>
     ${isRes() ? '<p class="hint">住宿機構預設只顯示「坐姿／輪椅可做」的項目，可切換「全部姿勢」或「床上」。</p>' : ''}
-    <div class="pgrid">${list.map(e => `<button type="button" class="pcard ${inPlan.has(e.id) ? 'on' : ''} ${sug.has(e.id) ? 'sug' : ''}" onclick="${inPlan.has(e.id) ? '' : `addItem('${e.id}');refreshPicker()`}" title="${esc(e.how)}">${e.img ? `<img src="${esc(e.img)}" alt="" loading="lazy">` : `<span class="noimg-l">${icon('heart', 28)}<small>圖片準備中</small></span>`}${wcBadge(e)}<b>${esc(e.name)}</b><small>${esc(e.dose)}</small>${inPlan.has(e.id) ? '<span class="pc-on">✓ 已加入</span>' : sug.has(e.id) ? '<span class="pc-sug">評估建議</span>' : ''}</button>`).join('') || empty('找不到符合的項目')}</div>`;
+    <div class="pgrid">${list.map(e => `<button type="button" class="pcard ${inPlan.has(e.id) ? 'on' : ''} ${sug.has(e.id) ? 'sug' : ''}" onclick="${inPlan.has(e.id) ? '' : `addItem('${e.id}');refreshPicker()`}" title="${esc(e.how)}">${itemImg(e) ? `<img src="${esc(itemImg(e))}" alt="" loading="lazy">` : `<span class="noimg-l">${icon('heart', 28)}<small>圖片準備中</small></span>`}${wcBadge(e)}<b>${esc(e.name)}</b><small>${esc(e.dose)}</small>${inPlan.has(e.id) ? '<span class="pc-on">✓ 已加入</span>' : sug.has(e.id) ? '<span class="pc-sug">評估建議</span>' : ''}</button>`).join('') || empty('找不到符合的項目')}</div>`;
 }
 function refreshPicker(){ const el = $('#picker'); if (!el) return; const q = document.activeElement?.getAttribute('aria-label') === '搜尋'; el.innerHTML = pickerBody(); if (q) { const i = el.querySelector('input[aria-label="搜尋"]'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 function savePlan(){
