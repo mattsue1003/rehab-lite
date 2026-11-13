@@ -67,7 +67,7 @@ function pageHome(){
   for (const c of cs) {
     const p = activePlan(c.id);
     if (!Logic.lastAssessment(c.id)) noAssess.push(c); else if (!p) noPlan.push(c);
-    if (p) { if (p.endDate <= addDays(today, 14)) ending.push({ c, p }); p.items.filter(it => scheduled(p, it, today)).forEach(it => { tot++; if (curStatus(p.id, it.id, today)) done++; }); }
+    if (p) { if (p.endDate <= addDays(today, 14)) ending.push({ c, p }); checkables(p).filter(it => scheduled(p, it, today)).forEach(it => { tot++; if (curStatus(p.id, it.id, today)) done++; }); }
   }
   const grpCount = {}; cs.forEach(c => (activePlan(c.id)?.groups || []).forEach(g => grpCount[g.type] = (grpCount[g.type] || 0) + 1));
   const step = (n, t, d, h) => `<a class="step-c" href="${h}"><span class="sn">${n}</span><b>${t}</b><small>${d}</small></a>`;
@@ -81,7 +81,7 @@ function pageHome(){
   ${demoGuideHTML()}
   ${cs.length ? '' : `<section class="card guide"><h2>還沒有${term()}資料</h2><p>可以先載入 <b>3 個模擬個案</b>，看看從評估、開立計畫、每日勾選到再評估修正的完整流程；看完可一鍵清除。</p><div class="btn-row">${btn('載入 3 個模擬個案', 'loadDemo()', { k:'primary', i:'users' })}<a class="btn" href="#/clients">直接新增${term()}</a></div></section>`}
   <div class="grid2">
-    <section class="card"><h2>今日個別介入 <small>${rocDate(today)}</small></h2>
+    <section class="card"><h2>今日勾選（個別＋團體） <small>${rocDate(today)}</small></h2>
       <div class="big-prog"><b>${done}</b>／${tot} 項已記錄</div><div class="bar"><i style="width:${tot ? Math.round(done / tot * 100) : 0}%"></i></div>
       <p><a class="btn primary" href="#/today">${icon('check', 16)}開始勾選</a></p></section>
     <section class="card"><h2>待處理</h2>
@@ -89,7 +89,7 @@ function pageHome(){
     </section></div>
   <div class="grid2">
     <section class="card"><h2>團體參與人數</h2>${Object.keys(grpCount).length ? `<div class="kpis sm">${Object.entries(grpCount).map(([t, n]) => `<div class="kpi"><div class="k-n">${n}</div><div class="k-l">${esc(t)}</div></div>`).join('')}</div>` : empty('尚無團體介入')}</section>
-    <section class="card"><h2>空白表單 <small>直接印出，手寫勾選</small></h2><div class="exp-row"><span>空白復能評估表</span>${exportBar('blankAssess', () => assessDoc(null, null), ['pdf', 'word'])}</div></section></div>`;
+    <section class="card"><h2>空白表單 <small>直接印出，手寫勾選</small></h2><div class="exp-row"><span>空白復能評估表</span>${exportBar('blankAssess', () => assessDoc(null, null))}</div><div class="exp-row"><span>空白復能計畫參與同意書</span>${exportBar('blankConsent', () => consentDoc(null))}</div></section></div>`;
 }
 function setOrgType(t){
   const from = Store.DB.meta.orgType; if (from === t) return;

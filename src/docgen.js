@@ -125,53 +125,78 @@ async function downloadDocx(doc){
   await download(fileSafe(doc.title) + '_' + todayISO() + '.docx', blob); toast('已產生 Word 檔');
 }
 
-/* ---------- PowerPoint（.pptx，PptxGenJS） ---------- */
-const PC = { bg:'FBF7EF', text:'3B352B', muted:'7A6F5D', pri:'6B8F71', line:'D8CDB6', head:'EDE5D3' };
-function pptBase(title){
-  const p = new PptxGenJS(); p.layout = 'LAYOUT_WIDE'; p.title = title; p.company = orgName();
-  p.defineSlideMaster({ title:'M', background:{ color:PC.bg }, objects:[{ rect:{ x:0, y:0, w:13.33, h:0.12, fill:{ color:PC.pri } } }, { text:{ text:orgName(), options:{ x:0.4, y:7.05, w:8, h:0.3, fontSize:10, color:PC.muted, fontFace:FONT } } }], slideNumber:{ x:12.4, y:7.05, fontSize:10, color:PC.muted } });
-  return p;
-}
-function pptTitle(p, title, sub){
-  const s = p.addSlide({ masterName:'M' });
-  s.addText(title, { x:0.8, y:2.3, w:11.7, h:1.4, fontSize:40, bold:true, color:PC.text, fontFace:FONT, align:'center' });
-  if (sub) s.addText(sub, { x:0.8, y:3.8, w:11.7, h:0.8, fontSize:20, color:PC.muted, fontFace:FONT, align:'center' });
-  s.addShape(p.ShapeType.line, { x:5.2, y:3.75, w:2.9, h:0, line:{ color:PC.pri, width:2 } });
-}
-function pptItemSlide(p, x, i){
-  const s = p.addSlide({ masterName:'M' }), im = x.img && IMG.get(x.img);
-  const tx = im ? 7.0 : 0.6, tw = im ? 5.8 : 12.1;
-  if (im) { const w = 6.1, h = Math.min(w * im.ratio, 5.6); s.addImage({ data:'image/jpeg;base64,' + im.b64, x:0.5, y:1.0, w:h / im.ratio, h }); }
-  s.addText(x.type || '', { x:tx, y:0.45, w:2.2, h:0.45, fontSize:14, bold:true, color:'FFFFFF', fill:{ color:PC.pri }, align:'center', fontFace:FONT });
-  s.addText(`${i + 1}. ${x.name}`, { x:tx, y:1.0, w:tw, h:0.9, fontSize:32, bold:true, color:PC.text, fontFace:FONT });
-  s.addText([x.dose, x.freq].filter(Boolean).join('｜'), { x:tx, y:1.9, w:tw, h:0.6, fontSize:20, bold:true, color:PC.pri, fontFace:FONT });
-  const body = [x.how, x.steps ? '步驟：' + x.steps : ''].filter(Boolean).map(t => ({ text:t, options:{ breakLine:true } }));
-  s.addText(body, { x:tx, y:2.6, w:tw, h:3.0, fontSize:17, color:PC.text, fontFace:FONT, valign:'top', paraSpaceAfter:8 });
-  if (x.caution) s.addText('⚠ ' + x.caution, { x:tx, y:5.75, w:tw, h:0.95, fontSize:15, color:'B4533F', fontFace:FONT, fill:{ color:'F6E1DA' }, valign:'middle' });
+/* ---------- PowerPoint（.pptx）：A4 版面的表單，不是簡報 ----------
+   每張投影片就是一頁 A4（直式或橫式），內容與 Word／PDF 相同，依高度自動換頁 */
+const PC = { text:'3B352B', muted:'7A6F5D', pri:'6B8F71', line:'7A6F5D', head:'EDE5D3', warn:'B4533F' };
+const PX = 72;  // 1 英吋 = 72 pt
+function textLines(text, wIn, fs){
+  const per = Math.max(1, (wIn * PX) / fs - 0.6);
+  return String(text ?? '').split('\n').reduce((n, line) => { let u = 0; for (const ch of line) u += /[\x00-\xff]/.test(ch) ? 0.55 : 1; return n + Math.max(1, Math.ceil(u / per)); }, 0);
 }
 async function downloadPptx(doc){
   await loadImages(docImages(doc));
-  const p = pptBase(doc.title); pptTitle(p, doc.title, doc.sub);
-  let s = null, y = 0, curH = doc.title;
-  const newSlide = (title) => { s = p.addSlide({ masterName:'M' }); s.addText(title, { x:0.5, y:0.3, w:12.3, h:0.7, fontSize:26, bold:true, color:PC.text, fontFace:FONT }); y = 1.15; };
-  const tbl = (fs) => ({ x:0.5, y, w:12.3, fontSize:fs, fontFace:FONT, color:PC.text, border:{ type:'solid', pt:0.75, color:PC.line }, valign:'middle', autoPage:true, autoPageRepeatHeader:true, autoPageHeaderRows:1, autoPageSlideStartY:1.15, newSlideStartY:1.15 });
-  const txt = v => isImg(v) ? '' : String(v ?? '');
+  const P = doc.landscape ? { w:11.69, h:8.27 } : { w:8.27, h:11.69 }, M = 0.45, CW = P.w - M * 2, BOT = P.h - 0.5, k = doc.big ? 1.3 : 1;
+  const pp = new PptxGenJS(); pp.defineLayout({ name:'A4', width:P.w, height:P.h }); pp.layout = 'A4'; pp.title = doc.title; pp.company = orgName();
+  let s, y, page = 0;
+  const T = (txt, o) => s.addText(String(txt ?? ''), { fontFace:FONT, color:PC.text, margin:0, valign:'top', fit:'none', ...o });
+  const newPage = () => {
+    s = pp.addSlide(); page++; s.background = { color:'FFFFFF' };
+    if (page === 1) {
+      T(orgName(), { x:M, y:M, w:CW, h:0.25, fontSize:10, color:PC.muted, align:'center' });
+      T(doc.title, { x:M, y:M + 0.25, w:CW, h:0.42, fontSize:Math.round(18 * k), bold:true, align:'center' });
+      let yy = M + 0.7; if (doc.sub) { T(doc.sub, { x:M, y:yy, w:CW, h:0.25, fontSize:9.5, color:PC.muted, align:'center' }); yy += 0.28; }
+      s.addShape(pp.ShapeType.line, { x:M, y:yy + 0.04, w:CW, h:0, line:{ color:PC.text, width:1.2 } }); y = yy + 0.16;
+    } else { T(`${doc.title}（續）`, { x:M, y:M - 0.15, w:CW, h:0.22, fontSize:8.5, color:PC.muted }); y = M + 0.15; }
+    T(String(page), { x:P.w - M - 0.5, y:P.h - 0.35, w:0.5, h:0.2, fontSize:8, color:PC.muted, align:'right' });
+  };
+  const need = h => { if (y + h > BOT) newPage(); };
+  // 表格：自行繪製每一格，跨頁時重複表頭
+  const drawTable = (head, rows, rel, o = {}) => {
+    const tot = rel.reduce((a, x) => a + x, 0), ws = rel.map(w => w / tot * CW), fs = (o.fs || 10) * k, lh = fs * 1.36 / PX, pad = 0.05;
+    const cellH = (v, i) => isImg(v) ? (IMG.get(v.img) ? (ws[i] - 0.1) * IMG.get(v.img).ratio + 0.08 : 0.3) : textLines(v, ws[i] - pad * 2, fs) * lh + 0.16;
+    const rowH = r => Math.max(o.rowH ? o.rowH / 25.4 : 0, ...r.map(cellH), lh + 0.1);
+    const drawRow = (r, isHead) => {
+      const h = rowH(r); let x = M;
+      r.forEach((v, i) => {
+        const opt = { x, y, w:ws[i], h, fontSize:fs, bold:isHead || (o.kv && i % 2 === 0), align:isHead || (o.center || []).includes(i) || isImg(v) ? 'center' : 'left', valign:'middle', margin:[pad * PX, pad * PX, pad * PX, pad * PX], line:{ color:PC.line, width:0.5 }, fill:{ color:isHead || (o.kv && i % 2 === 0) ? PC.head : 'FFFFFF' } };
+        if (isImg(v)) { s.addText('', opt); const im = IMG.get(v.img); if (im) { const iw = ws[i] - 0.1, ih = iw * im.ratio; s.addImage({ data:'image/jpeg;base64,' + im.b64, x:x + 0.05, y:y + (h - ih) / 2, w:iw, h:ih }); } }
+        else T(v, opt);
+        x += ws[i];
+      });
+      y += h;
+    };
+    if (head) { need(rowH(head) + rowH(rows[0] || head)); drawRow(head, true); }
+    for (const r of rows) { if (y + rowH(r) > BOT) { newPage(); if (head) drawRow(head, true); } drawRow(r, false); }
+    y += 0.12;
+  };
+  newPage();
   for (const b of doc.blocks) {
-    if (b.t === 'h') { curH = b.text; s = null; continue; }
-    if (b.t === 'sign') continue;
-    if (b.t === 'items') { b.items.forEach((x, i) => pptItemSlide(p, x, i)); s = null; continue; }
-    if (!s) newSlide(curH);
-    if (b.t === 'p') { const h = Math.min(5, 0.4 + String(b.text).length / 60 * 0.35); if (y + h > 6.9) newSlide(curH + '（續）'); s.addText(b.text, { x:0.5, y, w:12.3, h, fontSize:16, color:PC.text, fontFace:FONT, valign:'top' }); y += h + 0.1; }
-    else if (b.t === 'kv') { const rows = []; for (let i = 0; i < b.rows.length; i += 2) { const r = b.rows.slice(i, i + 2); while (r.length < 2) r.push(['', '']); rows.push(r.flatMap(([k, v]) => [{ text:k, options:{ bold:true, fill:{ color:PC.head } } }, { text:txt(v) }])); } if (y + rows.length * 0.4 > 6.9) newSlide(curH + '（續）'); s.addTable(rows, { ...tbl(13), colW:[1.8, 4.35, 1.8, 4.35] }); y += rows.length * 0.42 + 0.2; }
-    else if (b.t === 'table') {
-      const ws = b.widths || b.head.map(() => 1), tot = ws.reduce((a, x) => a + x, 0);
-      const rows = [b.head.map(h => ({ text:txt(h), options:{ bold:true, fill:{ color:PC.head }, align:'center' } })), ...b.rows.map(r => r.map((v, i) => ({ text:txt(v), options:{ align:(b.center || []).includes(i) ? 'center' : 'left' } })))];
-      if (y > 5.5) newSlide(curH + '（續）');
-      s.addTable(rows, { ...tbl(b.head.length > 10 ? 9 : 13), colW:ws.map(w => w / tot * 12.3) }); s = null;
+    if (b.t === 'h') { need(0.75); s.addShape(pp.ShapeType.rect, { x:M, y:y + 0.04, w:0.05, h:0.24, fill:{ color:PC.pri }, line:{ color:PC.pri, width:0 } }); T(b.text, { x:M + 0.12, y, w:CW - 0.12, h:0.32, fontSize:Math.round(13 * k), bold:true, valign:'middle' }); y += 0.4; }
+    else if (b.t === 'p') { const fs = (b.small ? 9 : 10.5) * k, lh = fs * 1.3 / PX; let lines = String(b.text).split('\n');
+      while (lines.length) { const room = Math.max(1, Math.floor((BOT - y) / lh)); let take = [], used = 0;
+        while (lines.length && used + textLines(lines[0], CW, fs) <= room) { used += textLines(lines[0], CW, fs); take.push(lines.shift()); }
+        if (!take.length) { if (y > M + 1) { newPage(); continue; } take.push(lines.shift()); used = textLines(take[0], CW, fs); }
+        T(take.join('\n'), { x:M, y, w:CW, h:used * lh + 0.05, fontSize:fs, lineSpacingMultiple:1.05 }); y += used * lh + 0.1; if (lines.length) newPage(); } }
+    else if (b.t === 'kv') { const n = b.cols || 2, rows = []; for (let i = 0; i < b.rows.length; i += n) { const r = b.rows.slice(i, i + n); while (r.length < n) r.push(['', '']); rows.push(r.flat()); } drawTable(null, rows, Array.from({ length:n }, () => [1, 2.2]).flat(), { kv:true, fs:9.5 }); }
+    else if (b.t === 'table') drawTable(b.head, b.rows, b.widths || b.head.map(() => 1), { center:b.center, rowH:b.rowH, fs:b.fs || 10 });
+    else if (b.t === 'items') for (const [i, x] of b.items.entries()) {
+      const im = x.img && IMG.get(x.img), iw = doc.landscape ? 2.6 : 2.2, ih = im ? iw * im.ratio : 0, tw = CW - (im ? iw + 0.15 : 0), fs = 9.5 * k, lh = fs * 1.3 / PX;
+      const body = [x.how, x.steps ? '步驟：' + x.steps : ''].filter(Boolean).join('\n');
+      const th = 0.3 + 0.25 + textLines(body, tw, fs) * lh + (x.caution ? textLines('注意：' + x.caution, tw, fs) * lh + 0.05 : 0);
+      const h = Math.max(ih, th) + 0.16; need(h);
+      s.addShape(pp.ShapeType.rect, { x:M, y, w:CW, h, fill:{ color:'FFFFFF' }, line:{ color:'D8CDB6', width:0.75 } });
+      if (im) s.addImage({ data:'image/jpeg;base64,' + im.b64, x:M + 0.08, y:y + 0.08, w:iw, h:ih });
+      const tx = M + (im ? iw + 0.2 : 0.1); let ty = y + 0.08;
+      s.addText([{ text:`${i + 1}. ${x.name}`, options:{ bold:true, fontSize:12 * k } }, { text:`　${x.type || ''}`, options:{ fontSize:9 * k, color:PC.pri } }], { x:tx, y:ty, w:tw - 0.1, h:0.3, fontFace:FONT, color:PC.text, margin:0, valign:'top' }); ty += 0.3;
+      T(`劑量：${x.dose || ''}｜${x.freq || ''}｜${x.executor || ''}`, { x:tx, y:ty, w:tw - 0.1, h:0.25, fontSize:fs, color:'4F7356' }); ty += 0.25;
+      if (body) { const bh = textLines(body, tw, fs) * lh; T(body, { x:tx, y:ty, w:tw - 0.1, h:bh, fontSize:fs }); ty += bh; }
+      if (x.caution) T('注意：' + x.caution, { x:tx, y:ty + 0.03, w:tw - 0.1, h:textLines('注意：' + x.caution, tw, fs) * lh, fontSize:fs, color:PC.warn });
+      y += h + 0.08;
     }
+    else if (b.t === 'sign') { need(0.7); y += 0.3; T(b.items.map(x => `${x}：＿＿＿＿＿＿＿＿`).join('　　'), { x:M, y, w:CW, h:0.3, fontSize:11 }); y += 0.4; }
   }
-  const blob = await p.write({ outputType:'blob', compression:true });
-  await download(fileSafe(doc.title) + '_' + todayISO() + '.pptx', blob); toast('已產生 PowerPoint 檔');
+  const blob = await pp.write({ outputType:'blob', compression:true });
+  await download(fileSafe(doc.title) + '_' + todayISO() + '.pptx', blob); toast('已產生 PowerPoint 檔（A4 版面）');
 }
 
 /* ---------- 輸出按鈕列 ---------- */
@@ -181,7 +206,19 @@ function exportBar(key, fn, kinds = ['pdf', 'word', 'ppt']){
   const L = { pdf:['列印／PDF', 'print'], word:['Word', 'download'], ppt:['PPT', 'download'] };
   return `<span class="exp">${kinds.map(k => btn(L[k][0], `runExport('${key}','${k}')`, { k:'sm', i:L[k][1] })).join('')}</span>`;
 }
+/* 簽名欄選項：專業人員／個案家屬簽名可分別開關（同意書固定保留） */
+const isClientSign = x => /家屬|個案|住民|本人|代理人/.test(x);
+function applySignPrefs(doc){
+  if (doc.keepSign) return doc;
+  const pro = Store.DB.meta.signPro !== false, cli = Store.DB.meta.signClient !== false;
+  return { ...doc, blocks:doc.blocks.map(b => b.t !== 'sign' ? b : { ...b, items:b.items.filter(x => isClientSign(x) ? cli : pro) }).filter(b => b.t !== 'sign' || b.items.length) };
+}
+function signPrefHTML(){
+  const m = Store.DB.meta;
+  return `<span class="sign-pref">表單簽名欄：${F_toggle('signPro', '專業人員', m.signPro !== false)}${F_toggle('signClient', term() + '／家屬', m.signClient !== false)}</span>`;
+}
+const F_toggle = (k, label, on) => `<label class="chk"><input type="checkbox" ${on ? 'checked' : ''} onchange="Store.setMeta('${k}',this.checked);toast('簽名欄設定已更新')"><span>${label}</span></label>`;
 async function runExport(key, kind){
-  try { if (kind !== 'pdf') await Folder.ensure(); const doc = DOCS[key](); if (!doc) return; toast('檔案產生中…'); if (kind === 'pdf') await printDoc(doc); else if (kind === 'word') await downloadDocx(doc); else await downloadPptx(doc); }
+  try { if (kind !== 'pdf') await Folder.ensure(); let doc = DOCS[key](); if (!doc) return; doc = applySignPrefs(doc); toast('檔案產生中…'); if (kind === 'pdf') await printDoc(doc); else if (kind === 'word') await downloadDocx(doc); else await downloadPptx(doc); }
   catch(e){ console.error(e); toast('產生檔案失敗：' + e.message, 'err'); }
 }

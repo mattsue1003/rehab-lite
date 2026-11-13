@@ -356,3 +356,9 @@ table.copm td:nth-child(2){min-width:220px;white-space:normal}
 .flow-act{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .form-row .fr-h{display:flex;gap:12px;align-items:flex-start}.form-row .fr-h h2{margin:0}.form-row .fr-h .hint{margin:2px 0 6px}
 .form-row .sn{flex:none}
+.grp-thumb{display:inline-grid;place-items:center;background:var(--pri-l)!important;color:var(--pri-d)}
+.grp-tag{display:inline-block;font-size:11px;font-weight:700;background:var(--accent);color:#fff;border-radius:6px;padding:0 6px;margin-right:6px;vertical-align:2px}
+.tile.is-grp{border-style:dashed}.tile.is-grp.s-ok,.tile.is-grp.s-part,.tile.is-grp.s-skip{border-style:solid}
+.grp-row{border-bottom:1px dashed var(--line);padding:6px 0}.grp-row .pills.sm{font-size:13px;color:var(--muted);align-items:center}
+.sign-pref{display:inline-flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:4px}
+.flow-warn{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--warn-l);border-radius:10px;padding:6px 10px;font-size:14px}

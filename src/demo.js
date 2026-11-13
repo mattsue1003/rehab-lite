@@ -31,7 +31,7 @@ function loadDemo(){
   // 依週數讓完成率逐漸提高（前期較多「部分」，後期多「完成」）；今天留空讓使用者試點
   const fill = (p, from, to) => {
     const span = Math.max(1, diffDays(from, to));
-    for (let d = from; d <= to && d < T; d = addDays(d, 1)) for (const x of p.items) {
+    for (let d = from; d <= to && d < T; d = addDays(d, 1)) for (const x of checkables(p)) {
       if (!scheduled(p, x, d) || rnd() < 0.05) continue;
       const prog = diffDays(from, d) / span, r = rnd();
       put('checks', { clientId:p.clientId, planId:p.id, itemId:x.id, date:d, status:r < 0.55 + prog * 0.3 ? 'ok' : r < 0.9 ? 'part' : 'skip', by:rnd() > 0.5 ? '黃○英' : '吳○明' });
@@ -48,7 +48,7 @@ function loadDemo(){
     goals:[newGoal({ id:'g1', activity:'自己上廁所', when:'12 週內', how:'扶著廁所扶手', assist:'在旁人監督下（不需碰觸）', scene:'白天自己去廁所，不再需要包尿布', measure:'每天 3 次中有 2 次成功', baseline:'需照服員扶持並協助拉褲子（自評表現 3/10）' }),
       newGoal({ id:'g2', activity:'自己走去市場買菜', when:'12 週內', how:'使用四腳拐', assist:'在旁人監督下（不需碰觸）', scene:'從家門口走到巷口市場（約 200 公尺）挑選晚餐要煮的菜', measure:'中途休息不超過 1 次', baseline:'只能在室內走 20 公尺（自評表現 2/10）' })],
     items:[it('i1', 'sit-to-stand', { dose:'8 下 × 2 組' }), it('i2', 'single-leg-stance-supported'), it('i3', 'toilet-transfer', { times:2 }), it('i4', 'button-board', { days:[1, 3, 5] }), it('i5', 'forward-walking-line', { executor:'治療師', days:[2, 4], dose:'20 公尺 × 2 趟' })],
-    groups:[{ type:'運動團體', freq:'每週 3 次', note:'' }, { type:'藝術團體', freq:'每週 1 次', note:'喜歡畫畫' }], devices:['馬桶扶手架', '防滑措施'], note:'女兒可於居家每天晚飯後陪同坐站 10 下。' });
+    groups:[{ type:'運動團體', freq:'每週 3 次', note:'', days:[1, 3, 5] }, { type:'藝術團體', freq:'每週 1 次', note:'喜歡畫畫', days:[2] }], devices:['馬桶扶手架', '防滑措施'], note:'女兒可於居家每天晚飯後陪同坐站 10 下。' });
   fill(p1, p1.startDate, p1.endDate);
   [[70, '前兩週右肩痛，扶桌單腳站常只做一半。'], [42, '如廁時已能自己拉褲子，只需在旁看著。'], [14, '走廊步行可達 60 公尺，中途休息 1 次。']].forEach(([d, n]) => put('weekNotes', { planId:p1.id, clientId:C[0].id, week:weekStart(ago(d)), note:n, by:'黃○英' }));
   const a2 = mkA(C[0], { date:ago(2), type:'再評', adl:[10, 10, 5, 10, 0, 10, 5, 10, 10, 10],
@@ -62,7 +62,7 @@ function loadDemo(){
     goals:[newGoal({ id:'g2', activity:'自己走去市場買菜', when:'12 週內', how:'使用四腳拐', assist:'可獨立', scene:'從家門口走到巷口市場，買一小袋菜回家煮給女兒吃', measure:'中途休息不超過 1 次', baseline:'可走到巷口但需休息 2 次（自評表現 4/10）' }),
       newGoal({ id:'g3', activity:'畫畫', when:'8 週內', how:'使用加粗握柄的畫筆', assist:'可獨立', scene:'用右手畫一張生日賀卡送給孫女', measure:'完成 1 件作品', baseline:'右手握筆 5 分鐘就累，作品要別人幫忙完成（自評表現 6/10）' })],
     items:[it('i1', 'sit-to-stand', { dose:'10 下 × 3 組' }), it('i6', 'tandem-stance'), it('i7', 'carry-light-object-walk', { days:[1, 3, 5] }), it('i8', 'walking-program', { executor:'治療師', days:[2, 4], dose:'10 分鐘' }), it('i9', 'grip-towel', { days:[1, 3, 5] })],
-    groups:[{ type:'運動團體', freq:'每週 3 次', note:'' }, { type:'藝術團體', freq:'每週 1 次', note:'練習右手塗色' }], devices:['防滑措施'], note:'如廁目標已達成，改為維持（照服員持續在旁監督）；新增持物步行為上市場做準備。' });
+    groups:[{ type:'運動團體', freq:'每週 3 次', note:'', days:[1, 3, 5] }, { type:'藝術團體', freq:'每週 1 次', note:'練習右手塗色', days:[2] }], devices:['防滑措施'], note:'如廁目標已達成，改為維持（照服員持續在旁監督）；新增持物步行為上市場做準備。' });
   fill(p2, p2.startDate, T);
 
   /* ---------- 2. 陳○水：計畫執行中（輕度失智） ---------- */
@@ -75,7 +75,7 @@ function loadDemo(){
     goals:[newGoal({ id:'g4', activity:'自己去公園散步', when:'12 週內', how:'使用助行器', assist:'在旁人監督下（不需碰觸）', scene:'從中心門口走到隔壁公園，和老朋友打招呼再走回來', measure:'每週 3 次、自己找到回來的路', baseline:'需陪同並提示方向' }),
       newGoal({ id:'g5', activity:'和朋友下象棋', when:'8 週內', how:'', assist:'在口頭提示下', scene:'在中心和老朋友下完一盤象棋', measure:'每週 2 次、全程參與', baseline:'下到一半會忘記輪到誰' })],
     items:[it('i10', 'sit-to-stand', { dose:'10 下 × 2 組' }), it('i11', 'standing-weight-shift'), it('i12', 'cloth-folding', { days:[1, 3, 5] }), it('i13', 'walking-program', { days:[1, 3, 5], dose:'到公園來回約 15 分鐘' })],
-    groups:[{ type:'認知團體', freq:'每週 2 次', note:'' }, { type:'懷舊團體', freq:'每週 1 次', note:'喜歡聊務農' }, { type:'運動團體', freq:'每週 3 次', note:'' }], devices:['防走失定位裝置'] });
+    groups:[{ type:'認知團體', freq:'每週 2 次', note:'', days:[2, 4] }, { type:'懷舊團體', freq:'每週 1 次', note:'喜歡聊務農', days:[3] }, { type:'運動團體', freq:'每週 3 次', note:'', days:[1, 3, 5] }], devices:['防走失定位裝置'] });
   fill(p3, p3.startDate, T);
   put('weekNotes', { planId:p3.id, clientId:C[1].id, week:weekStart(ago(7)), note:'週三下午焦躁，散步改到上午後配合度變好。', by:'吳○明' });
 
@@ -88,7 +88,7 @@ function loadDemo(){
   const p4 = put('plans', { id:'dl_p3', clientId:C[2].id, assessmentId:a4.id, version:1, status:'執行中', startDate:ago(4), endDate:addDays(ago(4), 83), author:'林○君', role:'物理治療師', problems:[],
     goals:[newGoal({ id:'g6', activity:'自己從輪椅移到椅子', when:'12 週內', how:'先坐 30 秒再起身，扶著椅子扶手', assist:'在少量協助下', scene:'從輪椅移到餐桌椅子上，和太太一起吃晚飯', measure:'每天午餐、晚餐各 1 次', baseline:'需中度協助（自評表現 3/10）' })],
     items:[it('i14', 'sit-pivot-transfer', { times:2 }), it('i15', 'sit-to-stand', { dose:'5 下 × 2 組', caution:'起身前先坐 30 秒，頭暈即停' }), it('i16', 'metronome-stepping'), it('i17', 'oral_exercise')],
-    groups:[{ type:'手工藝團體', freq:'每週 2 次', note:'木工、手作' }, { type:'社交團體', freq:'每週 1 次', note:'' }], devices:['移位腰帶與人力移位吊帶', '移位滑板'] });
+    groups:[{ type:'手工藝團體', freq:'每週 2 次', note:'木工、手作', days:[2, 4] }, { type:'社交團體', freq:'每週 1 次', note:'', days:[5] }], devices:['移位腰帶與人力移位吊帶', '移位滑板'] });
   fill(p4, p4.startDate, T);
 
   for (const pl of Store.all('plans').filter(x => x.demo)) { pl.problems = planProblemsFor(Store.get('assessments', pl.assessmentId), pl.goals).map(x => x.text); Store.upsert('plans', pl); }

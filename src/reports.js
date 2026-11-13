@@ -32,10 +32,10 @@ function copmTable(prev, cur, l1, l2){
   return rows.length ? { t:'table', head:['最想做到的事', `${l1}表現`, `${l2}表現`, `${l1}滿意`, `${l2}滿意`, '表現變化'], widths:[3.4, 1, 1, 1, 1, 1.8], center:[1, 2, 3, 4], rows } : { t:'p', text:'（未填寫）' };
 }
 function gasLabel(v){ return v === '' || v == null ? '未評' : (GAS.find(x => x[0] === +v) || ['', ''])[1]; }
-function itemStats(pl, from, to){
+function itemStats(pl, from, to, groups){
   const recs = new Map(Store.all('checks').filter(x => x.clientId === pl.clientId).map(x => [x.itemId + '|' + x.date, x]));
   const s = from > pl.startDate ? from : pl.startDate, e = [to, pl.endDate, todayISO()].sort()[0];
-  return (pl.items || []).map(it => { let exp = 0, ok = 0, part = 0, skip = 0;
+  return (groups ? groupItems(pl) : (pl.items || [])).map(it => { let exp = 0, ok = 0, part = 0, skip = 0;
     for (let d = s; d <= e; d = addDays(d, 1)) if ((it.days || []).includes(weekday(d))) { exp++; const r = recs.get(it.id + '|' + d)?.status; if (r === 'ok') ok++; else if (r === 'part') part++; else if (r === 'skip') skip++; }
     return { name:it.name, exp, ok, part, skip, rate:exp ? Math.round((ok + part * 0.5) / exp * 100) : null }; });
 }
@@ -46,6 +46,8 @@ function execBlocks(plans, from, to){
     st.forEach(x => { E += x.exp; O += x.ok; P += x.part; K += x.skip; });
     out.push({ t:'table', head:[`計畫 v${pl.version} 項目`, '應執行', '完成', '部分', '未執行', '執行率'], widths:[3.4, 1, 1, 1, 1, 1.2], center:[1, 2, 3, 4, 5], rows:st.map(x => [x.name, x.exp, x.ok, x.part, x.skip, x.rate == null ? '—' : x.rate + '%']) });
   }
+  const gRows = plans.flatMap(pl => itemStats(pl, from, to, true).filter(x => x.exp).map(x => [`v${pl.version}`, x.name, x.exp, x.ok, x.part, x.skip, x.rate == null ? '—' : x.rate + '%']));
+  if (gRows.length) out.push({ t:'table', head:['版本', '團體', '應參加', '有參加', '部分', '未參加', '參與率'], widths:[0.8, 2.6, 1, 1, 1, 1, 1.2], center:[0, 2, 3, 4, 5, 6], rows:gRows });
   out.unshift({ t:'p', text:E ? `期間應執行 ${E} 次：完成 ${O}、部分 ${P}、未執行 ${K}、未記錄 ${E - O - P - K}；整體執行率 ${Math.round((O + P * 0.5) / E * 100)}%。` : '期間沒有個別介入的執行紀錄。' });
   return out;
 }
@@ -114,3 +116,31 @@ function docForAssessment(a){
   return Logic.assessmentsOf(a.clientId).some(x => x.id !== a.id && x.date <= a.date) ? reassessDoc(a) : initialDoc(a);
 }
 const docNameFor = a => a.type === '結案評估' ? '復能結案報告' : a.type === '初評' ? '初評與復能計畫表' : '再評估與成效報告';
+
+/* ---------- ⓪ 復能計畫參與同意書（c 為 null → 空白） ---------- */
+function consentDoc(c){
+  const pl = c ? (activePlan(c.id) || Logic.plansOf(c.id).at(-1)) : null, blank = '＿＿＿＿＿＿＿＿';
+  const blocks = [c ? clientKV(c, [['服務單位', orgName()], ['計畫期間', pl ? `${rocDate(pl.startDate)} ～ ${rocDate(pl.endDate)}` : blank], ['主責人員', pl?.author || '']]) : { t:'kv', rows:[['姓名', ''], ['性別／年齡', ''], ...(isRes() ? [['房號／床號', '']] : []), ['服務單位', orgName()], ['計畫期間', ''], ['主責人員', '']] },
+    { t:'h', text:'一、計畫目的' },
+    { t:'p', text:`以${term()}「最想做到的事」為目標，運用現有的能力，在日常生活中反覆練習，提升或維持自己完成生活事務的能力，減少對他人協助的依賴。` },
+    { t:'h', text:'二、計畫內容與流程' },
+    { t:'p', text:'1. 初評：了解身體功能與最想做到的事。\n2. 共同設定目標：由長輩、家屬與專業人員一起討論。\n3. 介入：個別練習（運動、日常生活訓練）與團體活動（如運動、認知、懷舊團體）。\n4. 執行與紀錄：照顧服務員或治療師每日協助練習並記錄。\n5. 再評估：約每 8–12 週評估成效，必要時調整目標與內容。\n6. 結案：達成目標或符合結束條件時結案，並提供後續建議。' },
+    ...(pl ? [{ t:'p', text:'本次計畫目標：\n' + ((pl.goals || []).map((g, i) => `${i + 1}. ${g.text}`).join('\n') || '（尚未設定）') + (pl.items?.length ? '\n個別練習：' + pl.items.map(it => it.name).join('、') : '') + (pl.groups?.length ? '\n參加團體：' + pl.groups.map(g => g.type).join('、') : '') }] : []),
+    { t:'h', text:'三、參與原則' },
+    { t:'p', text:'1. 自願參與：本計畫採自願參加，可隨時提出暫停或退出，不影響原有的照顧服務。\n2. 共同決定：目標與內容由長輩、家屬與專業人員共同討論，可隨時提出調整。\n3. 結束條件：符合下列任一情形即可結束：(1) 達成目標；(2) 功能穩定，轉為日常維持；(3) 再評估顯示無進一步效益；(4) 身體狀況改變，不適合繼續；(5) 長輩或家屬提出結束。' },
+    { t:'h', text:'四、雙方的權利與義務' },
+    { t:'table', head:['服務單位', `${term()}與家屬`], widths:[1, 1], rows:[[
+      '1. 由專業人員評估並設計安全的練習。\n2. 依當天身體狀況調整強度，必要時暫停。\n3. 說明計畫內容與進度，回應疑問。\n4. 定期再評估，並提供紀錄與結果說明。\n5. 妥善保護個人資料。',
+      '1. 盡量參與，並嘗試自己完成能做到的部分。\n2. 身體不適、用藥或健康狀況改變時主動告知。\n3. 依建議在家延續練習（可視情況）。\n4. 有任何意見或想調整目標，隨時提出。\n5. 可隨時提出暫停或結束。']] },
+    { t:'h', text:'五、安全與可能的不適' },
+    { t:'p', text:'練習後可能出現疲累或肌肉痠痛，通常休息後會改善。練習時照顧服務員會在旁保護；如出現胸悶、頭暈、呼吸困難或疼痛加劇，會立即停止並通知專業人員及家屬。' },
+    { t:'h', text:'六、個人資料與紀錄' },
+    { t:'p', text:'評估與執行紀錄僅用於照顧服務、成效追蹤與主管機關評鑑查核；對外分享時以去識別化方式處理。長輩與家屬可申請查閱相關紀錄。' },
+    { t:'h', text:'七、照片與影像（請勾選）' },
+    { t:'p', text:'☐ 同意　☐ 不同意　拍攝練習過程照片，作為照顧紀錄與成效說明。\n☐ 同意　☐ 不同意　去識別化後，作為教學或成果分享使用。' },
+    { t:'h', text:'八、同意聲明' },
+    { t:'p', text:'本人已了解上述內容，並同意參加復能計畫。' },
+    { t:'sign', items:[`${term()}本人`, '家屬／法定代理人（關係：＿＿＿）', '說明人員', '日期'], keep:true },
+    { t:'p', small:true, text:'本同意書為範本，可依機構規定修訂。一式兩份，雙方各執一份。' }];
+  return { title:'復能計畫參與同意書', sub:c ? c.name : '', blocks, keepSign:true };
+}

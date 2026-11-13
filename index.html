@@ -365,6 +365,12 @@ table.copm td:nth-child(2){min-width:220px;white-space:normal}
 .flow-act{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .form-row .fr-h{display:flex;gap:12px;align-items:flex-start}.form-row .fr-h h2{margin:0}.form-row .fr-h .hint{margin:2px 0 6px}
 .form-row .sn{flex:none}
+.grp-thumb{display:inline-grid;place-items:center;background:var(--pri-l)!important;color:var(--pri-d)}
+.grp-tag{display:inline-block;font-size:11px;font-weight:700;background:var(--accent);color:#fff;border-radius:6px;padding:0 6px;margin-right:6px;vertical-align:2px}
+.tile.is-grp{border-style:dashed}.tile.is-grp.s-ok,.tile.is-grp.s-part,.tile.is-grp.s-skip{border-style:solid}
+.grp-row{border-bottom:1px dashed var(--line);padding:6px 0}.grp-row .pills.sm{font-size:13px;color:var(--muted);align-items:center}
+.sign-pref{display:inline-flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:4px}
+.flow-warn{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--warn-l);border-radius:10px;padding:6px 10px;font-size:14px}
 
 </style>
 </head>
@@ -1066,53 +1072,78 @@ async function downloadDocx(doc){
   await download(fileSafe(doc.title) + '_' + todayISO() + '.docx', blob); toast('已產生 Word 檔');
 }
 
-/* ---------- PowerPoint（.pptx，PptxGenJS） ---------- */
-const PC = { bg:'FBF7EF', text:'3B352B', muted:'7A6F5D', pri:'6B8F71', line:'D8CDB6', head:'EDE5D3' };
-function pptBase(title){
-  const p = new PptxGenJS(); p.layout = 'LAYOUT_WIDE'; p.title = title; p.company = orgName();
-  p.defineSlideMaster({ title:'M', background:{ color:PC.bg }, objects:[{ rect:{ x:0, y:0, w:13.33, h:0.12, fill:{ color:PC.pri } } }, { text:{ text:orgName(), options:{ x:0.4, y:7.05, w:8, h:0.3, fontSize:10, color:PC.muted, fontFace:FONT } } }], slideNumber:{ x:12.4, y:7.05, fontSize:10, color:PC.muted } });
-  return p;
-}
-function pptTitle(p, title, sub){
-  const s = p.addSlide({ masterName:'M' });
-  s.addText(title, { x:0.8, y:2.3, w:11.7, h:1.4, fontSize:40, bold:true, color:PC.text, fontFace:FONT, align:'center' });
-  if (sub) s.addText(sub, { x:0.8, y:3.8, w:11.7, h:0.8, fontSize:20, color:PC.muted, fontFace:FONT, align:'center' });
-  s.addShape(p.ShapeType.line, { x:5.2, y:3.75, w:2.9, h:0, line:{ color:PC.pri, width:2 } });
-}
-function pptItemSlide(p, x, i){
-  const s = p.addSlide({ masterName:'M' }), im = x.img && IMG.get(x.img);
-  const tx = im ? 7.0 : 0.6, tw = im ? 5.8 : 12.1;
-  if (im) { const w = 6.1, h = Math.min(w * im.ratio, 5.6); s.addImage({ data:'image/jpeg;base64,' + im.b64, x:0.5, y:1.0, w:h / im.ratio, h }); }
-  s.addText(x.type || '', { x:tx, y:0.45, w:2.2, h:0.45, fontSize:14, bold:true, color:'FFFFFF', fill:{ color:PC.pri }, align:'center', fontFace:FONT });
-  s.addText(`${i + 1}. ${x.name}`, { x:tx, y:1.0, w:tw, h:0.9, fontSize:32, bold:true, color:PC.text, fontFace:FONT });
-  s.addText([x.dose, x.freq].filter(Boolean).join('｜'), { x:tx, y:1.9, w:tw, h:0.6, fontSize:20, bold:true, color:PC.pri, fontFace:FONT });
-  const body = [x.how, x.steps ? '步驟：' + x.steps : ''].filter(Boolean).map(t => ({ text:t, options:{ breakLine:true } }));
-  s.addText(body, { x:tx, y:2.6, w:tw, h:3.0, fontSize:17, color:PC.text, fontFace:FONT, valign:'top', paraSpaceAfter:8 });
-  if (x.caution) s.addText('⚠ ' + x.caution, { x:tx, y:5.75, w:tw, h:0.95, fontSize:15, color:'B4533F', fontFace:FONT, fill:{ color:'F6E1DA' }, valign:'middle' });
+/* ---------- PowerPoint（.pptx）：A4 版面的表單，不是簡報 ----------
+   每張投影片就是一頁 A4（直式或橫式），內容與 Word／PDF 相同，依高度自動換頁 */
+const PC = { text:'3B352B', muted:'7A6F5D', pri:'6B8F71', line:'7A6F5D', head:'EDE5D3', warn:'B4533F' };
+const PX = 72;  // 1 英吋 = 72 pt
+function textLines(text, wIn, fs){
+  const per = Math.max(1, (wIn * PX) / fs - 0.6);
+  return String(text ?? '').split('\n').reduce((n, line) => { let u = 0; for (const ch of line) u += /[\x00-\xff]/.test(ch) ? 0.55 : 1; return n + Math.max(1, Math.ceil(u / per)); }, 0);
 }
 async function downloadPptx(doc){
   await loadImages(docImages(doc));
-  const p = pptBase(doc.title); pptTitle(p, doc.title, doc.sub);
-  let s = null, y = 0, curH = doc.title;
-  const newSlide = (title) => { s = p.addSlide({ masterName:'M' }); s.addText(title, { x:0.5, y:0.3, w:12.3, h:0.7, fontSize:26, bold:true, color:PC.text, fontFace:FONT }); y = 1.15; };
-  const tbl = (fs) => ({ x:0.5, y, w:12.3, fontSize:fs, fontFace:FONT, color:PC.text, border:{ type:'solid', pt:0.75, color:PC.line }, valign:'middle', autoPage:true, autoPageRepeatHeader:true, autoPageHeaderRows:1, autoPageSlideStartY:1.15, newSlideStartY:1.15 });
-  const txt = v => isImg(v) ? '' : String(v ?? '');
+  const P = doc.landscape ? { w:11.69, h:8.27 } : { w:8.27, h:11.69 }, M = 0.45, CW = P.w - M * 2, BOT = P.h - 0.5, k = doc.big ? 1.3 : 1;
+  const pp = new PptxGenJS(); pp.defineLayout({ name:'A4', width:P.w, height:P.h }); pp.layout = 'A4'; pp.title = doc.title; pp.company = orgName();
+  let s, y, page = 0;
+  const T = (txt, o) => s.addText(String(txt ?? ''), { fontFace:FONT, color:PC.text, margin:0, valign:'top', fit:'none', ...o });
+  const newPage = () => {
+    s = pp.addSlide(); page++; s.background = { color:'FFFFFF' };
+    if (page === 1) {
+      T(orgName(), { x:M, y:M, w:CW, h:0.25, fontSize:10, color:PC.muted, align:'center' });
+      T(doc.title, { x:M, y:M + 0.25, w:CW, h:0.42, fontSize:Math.round(18 * k), bold:true, align:'center' });
+      let yy = M + 0.7; if (doc.sub) { T(doc.sub, { x:M, y:yy, w:CW, h:0.25, fontSize:9.5, color:PC.muted, align:'center' }); yy += 0.28; }
+      s.addShape(pp.ShapeType.line, { x:M, y:yy + 0.04, w:CW, h:0, line:{ color:PC.text, width:1.2 } }); y = yy + 0.16;
+    } else { T(`${doc.title}（續）`, { x:M, y:M - 0.15, w:CW, h:0.22, fontSize:8.5, color:PC.muted }); y = M + 0.15; }
+    T(String(page), { x:P.w - M - 0.5, y:P.h - 0.35, w:0.5, h:0.2, fontSize:8, color:PC.muted, align:'right' });
+  };
+  const need = h => { if (y + h > BOT) newPage(); };
+  // 表格：自行繪製每一格，跨頁時重複表頭
+  const drawTable = (head, rows, rel, o = {}) => {
+    const tot = rel.reduce((a, x) => a + x, 0), ws = rel.map(w => w / tot * CW), fs = (o.fs || 10) * k, lh = fs * 1.36 / PX, pad = 0.05;
+    const cellH = (v, i) => isImg(v) ? (IMG.get(v.img) ? (ws[i] - 0.1) * IMG.get(v.img).ratio + 0.08 : 0.3) : textLines(v, ws[i] - pad * 2, fs) * lh + 0.16;
+    const rowH = r => Math.max(o.rowH ? o.rowH / 25.4 : 0, ...r.map(cellH), lh + 0.1);
+    const drawRow = (r, isHead) => {
+      const h = rowH(r); let x = M;
+      r.forEach((v, i) => {
+        const opt = { x, y, w:ws[i], h, fontSize:fs, bold:isHead || (o.kv && i % 2 === 0), align:isHead || (o.center || []).includes(i) || isImg(v) ? 'center' : 'left', valign:'middle', margin:[pad * PX, pad * PX, pad * PX, pad * PX], line:{ color:PC.line, width:0.5 }, fill:{ color:isHead || (o.kv && i % 2 === 0) ? PC.head : 'FFFFFF' } };
+        if (isImg(v)) { s.addText('', opt); const im = IMG.get(v.img); if (im) { const iw = ws[i] - 0.1, ih = iw * im.ratio; s.addImage({ data:'image/jpeg;base64,' + im.b64, x:x + 0.05, y:y + (h - ih) / 2, w:iw, h:ih }); } }
+        else T(v, opt);
+        x += ws[i];
+      });
+      y += h;
+    };
+    if (head) { need(rowH(head) + rowH(rows[0] || head)); drawRow(head, true); }
+    for (const r of rows) { if (y + rowH(r) > BOT) { newPage(); if (head) drawRow(head, true); } drawRow(r, false); }
+    y += 0.12;
+  };
+  newPage();
   for (const b of doc.blocks) {
-    if (b.t === 'h') { curH = b.text; s = null; continue; }
-    if (b.t === 'sign') continue;
-    if (b.t === 'items') { b.items.forEach((x, i) => pptItemSlide(p, x, i)); s = null; continue; }
-    if (!s) newSlide(curH);
-    if (b.t === 'p') { const h = Math.min(5, 0.4 + String(b.text).length / 60 * 0.35); if (y + h > 6.9) newSlide(curH + '（續）'); s.addText(b.text, { x:0.5, y, w:12.3, h, fontSize:16, color:PC.text, fontFace:FONT, valign:'top' }); y += h + 0.1; }
-    else if (b.t === 'kv') { const rows = []; for (let i = 0; i < b.rows.length; i += 2) { const r = b.rows.slice(i, i + 2); while (r.length < 2) r.push(['', '']); rows.push(r.flatMap(([k, v]) => [{ text:k, options:{ bold:true, fill:{ color:PC.head } } }, { text:txt(v) }])); } if (y + rows.length * 0.4 > 6.9) newSlide(curH + '（續）'); s.addTable(rows, { ...tbl(13), colW:[1.8, 4.35, 1.8, 4.35] }); y += rows.length * 0.42 + 0.2; }
-    else if (b.t === 'table') {
-      const ws = b.widths || b.head.map(() => 1), tot = ws.reduce((a, x) => a + x, 0);
-      const rows = [b.head.map(h => ({ text:txt(h), options:{ bold:true, fill:{ color:PC.head }, align:'center' } })), ...b.rows.map(r => r.map((v, i) => ({ text:txt(v), options:{ align:(b.center || []).includes(i) ? 'center' : 'left' } })))];
-      if (y > 5.5) newSlide(curH + '（續）');
-      s.addTable(rows, { ...tbl(b.head.length > 10 ? 9 : 13), colW:ws.map(w => w / tot * 12.3) }); s = null;
+    if (b.t === 'h') { need(0.75); s.addShape(pp.ShapeType.rect, { x:M, y:y + 0.04, w:0.05, h:0.24, fill:{ color:PC.pri }, line:{ color:PC.pri, width:0 } }); T(b.text, { x:M + 0.12, y, w:CW - 0.12, h:0.32, fontSize:Math.round(13 * k), bold:true, valign:'middle' }); y += 0.4; }
+    else if (b.t === 'p') { const fs = (b.small ? 9 : 10.5) * k, lh = fs * 1.3 / PX; let lines = String(b.text).split('\n');
+      while (lines.length) { const room = Math.max(1, Math.floor((BOT - y) / lh)); let take = [], used = 0;
+        while (lines.length && used + textLines(lines[0], CW, fs) <= room) { used += textLines(lines[0], CW, fs); take.push(lines.shift()); }
+        if (!take.length) { if (y > M + 1) { newPage(); continue; } take.push(lines.shift()); used = textLines(take[0], CW, fs); }
+        T(take.join('\n'), { x:M, y, w:CW, h:used * lh + 0.05, fontSize:fs, lineSpacingMultiple:1.05 }); y += used * lh + 0.1; if (lines.length) newPage(); } }
+    else if (b.t === 'kv') { const n = b.cols || 2, rows = []; for (let i = 0; i < b.rows.length; i += n) { const r = b.rows.slice(i, i + n); while (r.length < n) r.push(['', '']); rows.push(r.flat()); } drawTable(null, rows, Array.from({ length:n }, () => [1, 2.2]).flat(), { kv:true, fs:9.5 }); }
+    else if (b.t === 'table') drawTable(b.head, b.rows, b.widths || b.head.map(() => 1), { center:b.center, rowH:b.rowH, fs:b.fs || 10 });
+    else if (b.t === 'items') for (const [i, x] of b.items.entries()) {
+      const im = x.img && IMG.get(x.img), iw = doc.landscape ? 2.6 : 2.2, ih = im ? iw * im.ratio : 0, tw = CW - (im ? iw + 0.15 : 0), fs = 9.5 * k, lh = fs * 1.3 / PX;
+      const body = [x.how, x.steps ? '步驟：' + x.steps : ''].filter(Boolean).join('\n');
+      const th = 0.3 + 0.25 + textLines(body, tw, fs) * lh + (x.caution ? textLines('注意：' + x.caution, tw, fs) * lh + 0.05 : 0);
+      const h = Math.max(ih, th) + 0.16; need(h);
+      s.addShape(pp.ShapeType.rect, { x:M, y, w:CW, h, fill:{ color:'FFFFFF' }, line:{ color:'D8CDB6', width:0.75 } });
+      if (im) s.addImage({ data:'image/jpeg;base64,' + im.b64, x:M + 0.08, y:y + 0.08, w:iw, h:ih });
+      const tx = M + (im ? iw + 0.2 : 0.1); let ty = y + 0.08;
+      s.addText([{ text:`${i + 1}. ${x.name}`, options:{ bold:true, fontSize:12 * k } }, { text:`　${x.type || ''}`, options:{ fontSize:9 * k, color:PC.pri } }], { x:tx, y:ty, w:tw - 0.1, h:0.3, fontFace:FONT, color:PC.text, margin:0, valign:'top' }); ty += 0.3;
+      T(`劑量：${x.dose || ''}｜${x.freq || ''}｜${x.executor || ''}`, { x:tx, y:ty, w:tw - 0.1, h:0.25, fontSize:fs, color:'4F7356' }); ty += 0.25;
+      if (body) { const bh = textLines(body, tw, fs) * lh; T(body, { x:tx, y:ty, w:tw - 0.1, h:bh, fontSize:fs }); ty += bh; }
+      if (x.caution) T('注意：' + x.caution, { x:tx, y:ty + 0.03, w:tw - 0.1, h:textLines('注意：' + x.caution, tw, fs) * lh, fontSize:fs, color:PC.warn });
+      y += h + 0.08;
     }
+    else if (b.t === 'sign') { need(0.7); y += 0.3; T(b.items.map(x => `${x}：＿＿＿＿＿＿＿＿`).join('　　'), { x:M, y, w:CW, h:0.3, fontSize:11 }); y += 0.4; }
   }
-  const blob = await p.write({ outputType:'blob', compression:true });
-  await download(fileSafe(doc.title) + '_' + todayISO() + '.pptx', blob); toast('已產生 PowerPoint 檔');
+  const blob = await pp.write({ outputType:'blob', compression:true });
+  await download(fileSafe(doc.title) + '_' + todayISO() + '.pptx', blob); toast('已產生 PowerPoint 檔（A4 版面）');
 }
 
 /* ---------- 輸出按鈕列 ---------- */
@@ -1122,8 +1153,20 @@ function exportBar(key, fn, kinds = ['pdf', 'word', 'ppt']){
   const L = { pdf:['列印／PDF', 'print'], word:['Word', 'download'], ppt:['PPT', 'download'] };
   return `<span class="exp">${kinds.map(k => btn(L[k][0], `runExport('${key}','${k}')`, { k:'sm', i:L[k][1] })).join('')}</span>`;
 }
+/* 簽名欄選項：專業人員／個案家屬簽名可分別開關（同意書固定保留） */
+const isClientSign = x => /家屬|個案|住民|本人|代理人/.test(x);
+function applySignPrefs(doc){
+  if (doc.keepSign) return doc;
+  const pro = Store.DB.meta.signPro !== false, cli = Store.DB.meta.signClient !== false;
+  return { ...doc, blocks:doc.blocks.map(b => b.t !== 'sign' ? b : { ...b, items:b.items.filter(x => isClientSign(x) ? cli : pro) }).filter(b => b.t !== 'sign' || b.items.length) };
+}
+function signPrefHTML(){
+  const m = Store.DB.meta;
+  return `<span class="sign-pref">表單簽名欄：${F_toggle('signPro', '專業人員', m.signPro !== false)}${F_toggle('signClient', term() + '／家屬', m.signClient !== false)}</span>`;
+}
+const F_toggle = (k, label, on) => `<label class="chk"><input type="checkbox" ${on ? 'checked' : ''} onchange="Store.setMeta('${k}',this.checked);toast('簽名欄設定已更新')"><span>${label}</span></label>`;
 async function runExport(key, kind){
-  try { if (kind !== 'pdf') await Folder.ensure(); const doc = DOCS[key](); if (!doc) return; toast('檔案產生中…'); if (kind === 'pdf') await printDoc(doc); else if (kind === 'word') await downloadDocx(doc); else await downloadPptx(doc); }
+  try { if (kind !== 'pdf') await Folder.ensure(); let doc = DOCS[key](); if (!doc) return; doc = applySignPrefs(doc); toast('檔案產生中…'); if (kind === 'pdf') await printDoc(doc); else if (kind === 'word') await downloadDocx(doc); else await downloadPptx(doc); }
   catch(e){ console.error(e); toast('產生檔案失敗：' + e.message, 'err'); }
 }
 
@@ -1212,7 +1255,7 @@ function planDoc(pl){
 
 /* ---------- 個別執行檢核表 ---------- */
 function indivCheckDoc(pl, o){
-  const c = Store.get('clients', pl.clientId), items = pl.items || [];
+  const c = Store.get('clients', pl.clientId), items = checkables(pl);
   const dates = o.mode === 'month' ? monthDays(o.month) : Array.from({ length:7 }, (_, i) => addDays(o.week, i));
   const inPlan = d => d >= pl.startDate && d <= pl.endDate;
   const recs = o.filled ? new Map(Store.all('checks').filter(x => x.clientId === pl.clientId).map(x => [x.itemId + '|' + x.date, x])) : new Map();
@@ -1227,13 +1270,13 @@ function indivCheckDoc(pl, o){
       { t:'p', text:'今天的感覺／想跟治療師說的話：\n' + blankLines(2) }] };
   }
   const head = o.mode === 'month' ? ['項目／劑量', ...dates.map(d => String(+d.slice(8)))] : ['項目', '劑量／頻率', '執行者', ...dates.map(dh)];
-  const rows = items.map(it => o.mode === 'month' ? [`${it.name}\n${it.dose || ''}`, ...dates.map(d => cellFor(it, d))] : [`${it.name}\n（${it.type || ''}）`, `${it.dose || ''}\n${freqText(it)}`, it.executor || '', ...dates.map(d => cellFor(it, d))]);
+  const rows = items.map(it => o.mode === 'month' ? [`${it.name}\n${it.dose || ''}`, ...dates.map(d => cellFor(it, d))] : [it.group ? `【團體】${it.name}` : `${it.name}\n（${it.type || ''}）`, `${it.dose || ''}\n${it.group ? daysText(it.days) : freqText(it)}`, it.executor || '', ...dates.map(d => cellFor(it, d))]);
   rows.push(o.mode === 'month' ? ['執行者簽名', ...dates.map(() => '')] : ['執行者簽名', '', '', ...dates.map(() => '')]);
   const note = o.filled && o.mode === 'week' ? Store.all('weekNotes').find(x => x.planId === pl.id && x.week === o.week)?.note : '';
   return { title:'個別復能執行檢核表', sub:`${c.name}${isRes() && c.bed ? '（' + c.bed + '）' : ''}｜${range}｜計畫 v${pl.version || 1}`, landscape:true, blocks:[
     { t:'p', text:`${SYM_LABEL}　　「—」為非執行日${groups ? '　　' + groups : ''}`, small:true },
     { t:'table', head, rows, widths:o.mode === 'month' ? [3, ...dates.map(() => 0.55)] : [2.4, 2, 1.2, ...dates.map(() => 1.1)], center:o.mode === 'month' ? dates.map((_, i) => i + 1) : dates.map((_, i) => i + 3), rowH:o.mode === 'month' ? 9 : 13, fs:o.mode === 'month' ? 8 : 10 },
-    { t:'p', text:'執行說明：' + items.map((it, i) => `${i + 1}. ${it.name}：${it.how || ''}${it.caution ? `（注意：${it.caution}）` : ''}`).join('　'), small:true },
+    { t:'p', text:'執行說明：' + items.filter(it => !it.group).map((it, i) => `${i + 1}. ${it.name}：${it.how || ''}${it.caution ? `（注意：${it.caution}）` : ''}`).join('　') + (items.some(it => it.group) ? '　團體列：✓ 有參加　△ 部分參與　✕ 未參加' : ''), small:true },
     { t:'p', text:'備註（未執行原因、反應、異常狀況）：\n' + (note || blankLines(o.mode === 'month' ? 2 : 3)) }] };
 }
 
@@ -1272,10 +1315,10 @@ function copmTable(prev, cur, l1, l2){
   return rows.length ? { t:'table', head:['最想做到的事', `${l1}表現`, `${l2}表現`, `${l1}滿意`, `${l2}滿意`, '表現變化'], widths:[3.4, 1, 1, 1, 1, 1.8], center:[1, 2, 3, 4], rows } : { t:'p', text:'（未填寫）' };
 }
 function gasLabel(v){ return v === '' || v == null ? '未評' : (GAS.find(x => x[0] === +v) || ['', ''])[1]; }
-function itemStats(pl, from, to){
+function itemStats(pl, from, to, groups){
   const recs = new Map(Store.all('checks').filter(x => x.clientId === pl.clientId).map(x => [x.itemId + '|' + x.date, x]));
   const s = from > pl.startDate ? from : pl.startDate, e = [to, pl.endDate, todayISO()].sort()[0];
-  return (pl.items || []).map(it => { let exp = 0, ok = 0, part = 0, skip = 0;
+  return (groups ? groupItems(pl) : (pl.items || [])).map(it => { let exp = 0, ok = 0, part = 0, skip = 0;
     for (let d = s; d <= e; d = addDays(d, 1)) if ((it.days || []).includes(weekday(d))) { exp++; const r = recs.get(it.id + '|' + d)?.status; if (r === 'ok') ok++; else if (r === 'part') part++; else if (r === 'skip') skip++; }
     return { name:it.name, exp, ok, part, skip, rate:exp ? Math.round((ok + part * 0.5) / exp * 100) : null }; });
 }
@@ -1286,6 +1329,8 @@ function execBlocks(plans, from, to){
     st.forEach(x => { E += x.exp; O += x.ok; P += x.part; K += x.skip; });
     out.push({ t:'table', head:[`計畫 v${pl.version} 項目`, '應執行', '完成', '部分', '未執行', '執行率'], widths:[3.4, 1, 1, 1, 1, 1.2], center:[1, 2, 3, 4, 5], rows:st.map(x => [x.name, x.exp, x.ok, x.part, x.skip, x.rate == null ? '—' : x.rate + '%']) });
   }
+  const gRows = plans.flatMap(pl => itemStats(pl, from, to, true).filter(x => x.exp).map(x => [`v${pl.version}`, x.name, x.exp, x.ok, x.part, x.skip, x.rate == null ? '—' : x.rate + '%']));
+  if (gRows.length) out.push({ t:'table', head:['版本', '團體', '應參加', '有參加', '部分', '未參加', '參與率'], widths:[0.8, 2.6, 1, 1, 1, 1, 1.2], center:[0, 2, 3, 4, 5, 6], rows:gRows });
   out.unshift({ t:'p', text:E ? `期間應執行 ${E} 次：完成 ${O}、部分 ${P}、未執行 ${K}、未記錄 ${E - O - P - K}；整體執行率 ${Math.round((O + P * 0.5) / E * 100)}%。` : '期間沒有個別介入的執行紀錄。' });
   return out;
 }
@@ -1354,6 +1399,34 @@ function docForAssessment(a){
   return Logic.assessmentsOf(a.clientId).some(x => x.id !== a.id && x.date <= a.date) ? reassessDoc(a) : initialDoc(a);
 }
 const docNameFor = a => a.type === '結案評估' ? '復能結案報告' : a.type === '初評' ? '初評與復能計畫表' : '再評估與成效報告';
+
+/* ---------- ⓪ 復能計畫參與同意書（c 為 null → 空白） ---------- */
+function consentDoc(c){
+  const pl = c ? (activePlan(c.id) || Logic.plansOf(c.id).at(-1)) : null, blank = '＿＿＿＿＿＿＿＿';
+  const blocks = [c ? clientKV(c, [['服務單位', orgName()], ['計畫期間', pl ? `${rocDate(pl.startDate)} ～ ${rocDate(pl.endDate)}` : blank], ['主責人員', pl?.author || '']]) : { t:'kv', rows:[['姓名', ''], ['性別／年齡', ''], ...(isRes() ? [['房號／床號', '']] : []), ['服務單位', orgName()], ['計畫期間', ''], ['主責人員', '']] },
+    { t:'h', text:'一、計畫目的' },
+    { t:'p', text:`以${term()}「最想做到的事」為目標，運用現有的能力，在日常生活中反覆練習，提升或維持自己完成生活事務的能力，減少對他人協助的依賴。` },
+    { t:'h', text:'二、計畫內容與流程' },
+    { t:'p', text:'1. 初評：了解身體功能與最想做到的事。\n2. 共同設定目標：由長輩、家屬與專業人員一起討論。\n3. 介入：個別練習（運動、日常生活訓練）與團體活動（如運動、認知、懷舊團體）。\n4. 執行與紀錄：照顧服務員或治療師每日協助練習並記錄。\n5. 再評估：約每 8–12 週評估成效，必要時調整目標與內容。\n6. 結案：達成目標或符合結束條件時結案，並提供後續建議。' },
+    ...(pl ? [{ t:'p', text:'本次計畫目標：\n' + ((pl.goals || []).map((g, i) => `${i + 1}. ${g.text}`).join('\n') || '（尚未設定）') + (pl.items?.length ? '\n個別練習：' + pl.items.map(it => it.name).join('、') : '') + (pl.groups?.length ? '\n參加團體：' + pl.groups.map(g => g.type).join('、') : '') }] : []),
+    { t:'h', text:'三、參與原則' },
+    { t:'p', text:'1. 自願參與：本計畫採自願參加，可隨時提出暫停或退出，不影響原有的照顧服務。\n2. 共同決定：目標與內容由長輩、家屬與專業人員共同討論，可隨時提出調整。\n3. 結束條件：符合下列任一情形即可結束：(1) 達成目標；(2) 功能穩定，轉為日常維持；(3) 再評估顯示無進一步效益；(4) 身體狀況改變，不適合繼續；(5) 長輩或家屬提出結束。' },
+    { t:'h', text:'四、雙方的權利與義務' },
+    { t:'table', head:['服務單位', `${term()}與家屬`], widths:[1, 1], rows:[[
+      '1. 由專業人員評估並設計安全的練習。\n2. 依當天身體狀況調整強度，必要時暫停。\n3. 說明計畫內容與進度，回應疑問。\n4. 定期再評估，並提供紀錄與結果說明。\n5. 妥善保護個人資料。',
+      '1. 盡量參與，並嘗試自己完成能做到的部分。\n2. 身體不適、用藥或健康狀況改變時主動告知。\n3. 依建議在家延續練習（可視情況）。\n4. 有任何意見或想調整目標，隨時提出。\n5. 可隨時提出暫停或結束。']] },
+    { t:'h', text:'五、安全與可能的不適' },
+    { t:'p', text:'練習後可能出現疲累或肌肉痠痛，通常休息後會改善。練習時照顧服務員會在旁保護；如出現胸悶、頭暈、呼吸困難或疼痛加劇，會立即停止並通知專業人員及家屬。' },
+    { t:'h', text:'六、個人資料與紀錄' },
+    { t:'p', text:'評估與執行紀錄僅用於照顧服務、成效追蹤與主管機關評鑑查核；對外分享時以去識別化方式處理。長輩與家屬可申請查閱相關紀錄。' },
+    { t:'h', text:'七、照片與影像（請勾選）' },
+    { t:'p', text:'☐ 同意　☐ 不同意　拍攝練習過程照片，作為照顧紀錄與成效說明。\n☐ 同意　☐ 不同意　去識別化後，作為教學或成果分享使用。' },
+    { t:'h', text:'八、同意聲明' },
+    { t:'p', text:'本人已了解上述內容，並同意參加復能計畫。' },
+    { t:'sign', items:[`${term()}本人`, '家屬／法定代理人（關係：＿＿＿）', '說明人員', '日期'], keep:true },
+    { t:'p', small:true, text:'本同意書為範本，可依機構規定修訂。一式兩份，雙方各執一份。' }];
+  return { title:'復能計畫參與同意書', sub:c ? c.name : '', blocks, keepSign:true };
+}
 
 /* ---- app.js ---- */
 /* ================================================================
@@ -1425,7 +1498,7 @@ function pageHome(){
   for (const c of cs) {
     const p = activePlan(c.id);
     if (!Logic.lastAssessment(c.id)) noAssess.push(c); else if (!p) noPlan.push(c);
-    if (p) { if (p.endDate <= addDays(today, 14)) ending.push({ c, p }); p.items.filter(it => scheduled(p, it, today)).forEach(it => { tot++; if (curStatus(p.id, it.id, today)) done++; }); }
+    if (p) { if (p.endDate <= addDays(today, 14)) ending.push({ c, p }); checkables(p).filter(it => scheduled(p, it, today)).forEach(it => { tot++; if (curStatus(p.id, it.id, today)) done++; }); }
   }
   const grpCount = {}; cs.forEach(c => (activePlan(c.id)?.groups || []).forEach(g => grpCount[g.type] = (grpCount[g.type] || 0) + 1));
   const step = (n, t, d, h) => `<a class="step-c" href="${h}"><span class="sn">${n}</span><b>${t}</b><small>${d}</small></a>`;
@@ -1439,7 +1512,7 @@ function pageHome(){
   ${demoGuideHTML()}
   ${cs.length ? '' : `<section class="card guide"><h2>還沒有${term()}資料</h2><p>可以先載入 <b>3 個模擬個案</b>，看看從評估、開立計畫、每日勾選到再評估修正的完整流程；看完可一鍵清除。</p><div class="btn-row">${btn('載入 3 個模擬個案', 'loadDemo()', { k:'primary', i:'users' })}<a class="btn" href="#/clients">直接新增${term()}</a></div></section>`}
   <div class="grid2">
-    <section class="card"><h2>今日個別介入 <small>${rocDate(today)}</small></h2>
+    <section class="card"><h2>今日勾選（個別＋團體） <small>${rocDate(today)}</small></h2>
       <div class="big-prog"><b>${done}</b>／${tot} 項已記錄</div><div class="bar"><i style="width:${tot ? Math.round(done / tot * 100) : 0}%"></i></div>
       <p><a class="btn primary" href="#/today">${icon('check', 16)}開始勾選</a></p></section>
     <section class="card"><h2>待處理</h2>
@@ -1447,7 +1520,7 @@ function pageHome(){
     </section></div>
   <div class="grid2">
     <section class="card"><h2>團體參與人數</h2>${Object.keys(grpCount).length ? `<div class="kpis sm">${Object.entries(grpCount).map(([t, n]) => `<div class="kpi"><div class="k-n">${n}</div><div class="k-l">${esc(t)}</div></div>`).join('')}</div>` : empty('尚無團體介入')}</section>
-    <section class="card"><h2>空白表單 <small>直接印出，手寫勾選</small></h2><div class="exp-row"><span>空白復能評估表</span>${exportBar('blankAssess', () => assessDoc(null, null), ['pdf', 'word'])}</div></section></div>`;
+    <section class="card"><h2>空白表單 <small>直接印出，手寫勾選</small></h2><div class="exp-row"><span>空白復能評估表</span>${exportBar('blankAssess', () => assessDoc(null, null))}</div><div class="exp-row"><span>空白復能計畫參與同意書</span>${exportBar('blankConsent', () => consentDoc(null))}</div></section></div>`;
 }
 function setOrgType(t){
   const from = Store.DB.meta.orgType; if (from === t) return;
@@ -1513,6 +1586,10 @@ const allItems = () => [...LIBRARY, ...Store.all('library')];
 const findItem = id => allItems().find(e => e.id === id);
 const defaultDays = () => isRes() ? [1, 2, 3, 4, 5, 6, 7] : [1, 2, 3, 4, 5];
 const thumb = (src, cls = '') => src ? `<img class="thumb ${cls}" src="${esc(src)}" alt="" loading="lazy">` : `<span class="thumb ${cls} noimg">${icon('heart', 18)}</span>`;
+const groupItems = p => (p?.groups || []).map(g => ({ id:'g:' + g.type, name:g.type, type:'團體', dose:g.freq || '', days:g.days?.length ? g.days : defaultDays(), times:1, img:'', group:true, executor:'團體帶領者' }));
+const checkables = p => [...(p?.items || []), ...groupItems(p)];
+const stLabel = (it, s) => it?.group ? { ok:'有參加', part:'部分參與', skip:'未參加' }[s] : ST_LABEL[s];
+const groupThumb = cls => `<span class="thumb ${cls || ''} grp-thumb">${icon('users', 18)}</span>`;
 const scheduled = (pl, it, d) => d >= pl.startDate && d <= pl.endDate && (it.days || []).includes(weekday(d));
 
 function planStats(pl, from, to){
@@ -1536,15 +1613,15 @@ function pageToday(){
   const d = S.day || todayISO();
   setTitle('今日勾選', rocDate(d) + '（星期' + WEEKDAYS[weekday(d)] + '）');
   const list = Store.all('clients').filter(c => c.status !== '結案' && (!todayQ || c.name.includes(todayQ) || (c.bed || '').includes(todayQ)))
-    .map(c => ({ c, p:activePlan(c.id) })).filter(x => x.p && x.p.items.some(it => scheduled(x.p, it, d)))
+    .map(c => ({ c, p:activePlan(c.id) })).filter(x => x.p && checkables(x.p).some(it => scheduled(x.p, it, d)))
     .sort((a, b) => (a.c.bed || a.c.name).localeCompare(b.c.bed || b.c.name));
   let tot = 0, done = 0;
   const cards = list.map(({ c, p }) => {
-    const its = p.items.filter(it => scheduled(p, it, d)); const st = its.map(it => curStatus(p.id, it.id, d));
+    const its = checkables(p).filter(it => scheduled(p, it, d)); const st = its.map(it => curStatus(p.id, it.id, d));
     tot += its.length; done += st.filter(Boolean).length;
     return `<article class="tcard" id="tc-${c.id}"><header><div class="av">${esc(c.name.slice(0, 1))}</div><div class="tn"><b>${esc(c.name)}</b><small>${esc([isRes() ? c.bed : '', c.caution].filter(Boolean).join('・'))}</small></div>
       ${st.every(Boolean) ? '<span class="card-done">✓ 今日全部已記錄</span>' : `<span class="card-prog">已記錄 <b>${st.filter(Boolean).length}</b>／${its.length}</span>${btn('其餘全部完成', `allDone('${p.id}','${d}')`, { k:'sm' })}`}</header>
-      <div class="tiles">${its.map((it, i) => { const s = st[i], r = s ? checkRec(p.id, it.id, d) : null; return `<button class="tile ${s ? 's-' + s : ''}" onclick="tapTile('${p.id}','${it.id}','${d}')" aria-label="${esc(it.name)}：${s ? ST_LABEL[s] : '尚未記錄'}">${thumb(it.img)}<span class="t-txt"><b>${esc(it.name)}</b><small>${esc(it.dose || '')}${it.times > 1 ? `｜每日 ${it.times} 次` : ''}</small><span class="t-rec">${s ? `<b>${SYM[s]} ${ST_LABEL[s]}</b> · ${esc(hhmm(r?.updatedAt))}${r?.by ? ' ' + esc(r.by) : ''}` : '尚未記錄'}</span></span><span class="t-st">${s ? SYM[s] : ''}</span></button>`; }).join('')}</div></article>`;
+      <div class="tiles">${its.map((it, i) => { const s = st[i], r = s ? checkRec(p.id, it.id, d) : null; return `<button class="tile ${s ? 's-' + s : ''} ${it.group ? 'is-grp' : ''}" onclick="tapTile('${p.id}','${it.id}','${d}')" aria-label="${esc(it.name)}：${s ? stLabel(it, s) : '尚未記錄'}">${it.group ? groupThumb() : thumb(it.img)}<span class="t-txt"><b>${it.group ? '<span class="grp-tag">團體</span>' : ''}${esc(it.name)}</b><small>${esc(it.dose || '')}${it.times > 1 ? `｜每日 ${it.times} 次` : ''}</small><span class="t-rec">${s ? `<b>${SYM[s]} ${stLabel(it, s)}</b> · ${esc(hhmm(r?.updatedAt))}${r?.by ? ' ' + esc(r.by) : ''}` : '尚未記錄'}</span></span><span class="t-st">${s ? SYM[s] : ''}</span></button>`; }).join('')}</div></article>`;
   }).join('');
   return `<div class="toolbar"><button class="btn" onclick="S.day=addDays('${d}',-1);route()">${icon('back', 16)}前一天</button><input type="date" class="inp" value="${d}" onchange="S.day=this.value;route()" aria-label="日期"><button class="btn" onclick="S.day=addDays('${d}',1);route()">後一天</button>${d !== todayISO() ? btn('回到今天', 'S.day=null;route()') : ''}
     <span class="sp"></span><input class="inp" placeholder="搜尋姓名${isRes() ? '／床號' : ''}" value="${esc(todayQ)}" onchange="todayQ=this.value;route()" aria-label="搜尋"></div>
@@ -1557,18 +1634,18 @@ const ST_LABEL = { ok:'完成', part:'部分完成', skip:'未執行' };
 const hhmm = iso => { if (!iso) return ''; const t = new Date(iso); return String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0'); };
 const checkRec = (planId, itemId, d) => { const cid = Store.get('plans', planId)?.clientId; return Store.all('checks').find(x => x.clientId === cid && x.itemId === itemId && x.date === d); };
 async function tapTile(planId, itemId, d){
-  const p = Store.get('plans', planId), it = p.items.find(x => x.id === itemId), c = Store.get('clients', p.clientId);
+  const p = Store.get('plans', planId), it = checkables(p).find(x => x.id === itemId), c = Store.get('clients', p.clientId);
   const prev = curStatus(planId, itemId, d), next = NEXT[prev];
   setCheck(planId, itemId, d, next); refreshCard(p.clientId);
   const ok = await Store.flush(); refreshCard(p.clientId);
   if (!ok) return;
-  toast(`已儲存：${c.name}・${it.name} → ${next ? SYM[next] + ' ' + ST_LABEL[next] : '已取消記錄'}`, 'ok', { label:'復原', fn:async () => { setCheck(planId, itemId, d, prev); await Store.flush(); refreshCard(p.clientId); toast(`已復原：${it.name} → ${prev ? ST_LABEL[prev] : '尚未記錄'}`, 'ok'); } });
+  toast(`已儲存：${c.name}・${it.name} → ${next ? SYM[next] + ' ' + stLabel(it, next) : '已取消記錄'}`, 'ok', { label:'復原', fn:async () => { setCheck(planId, itemId, d, prev); await Store.flush(); refreshCard(p.clientId); toast(`已復原：${it.name} → ${prev ? stLabel(it, prev) : '尚未記錄'}`, 'ok'); } });
 }
 async function allDone(planId, d){
   const p = Store.get('plans', planId), c = Store.get('clients', p.clientId);
-  const todo = p.items.filter(it => scheduled(p, it, d) && !curStatus(p.id, it.id, d));
+  const todo = checkables(p).filter(it => scheduled(p, it, d) && !curStatus(p.id, it.id, d));
   todo.forEach(it => setCheck(p.id, it.id, d, 'ok')); refreshCard(p.clientId);
-  if (await Store.flush()) { refreshCard(p.clientId); toast(`已儲存：${c.name} 其餘 ${todo.length} 項標記為 ✓ 完成`, 'ok', { label:'復原', fn:async () => { todo.forEach(it => setCheck(p.id, it.id, d, '')); await Store.flush(); refreshCard(p.clientId); toast('已復原', 'ok'); } }); }
+  if (await Store.flush()) { refreshCard(p.clientId); toast(`已儲存：${c.name} 其餘 ${todo.length} 項標記為 ✓ 完成／有參加`, 'ok', { label:'復原', fn:async () => { todo.forEach(it => setCheck(p.id, it.id, d, '')); await Store.flush(); refreshCard(p.clientId); toast('已復原', 'ok'); } }); }
 }
 function refreshCard(cid){ const t = document.createElement('div'); t.innerHTML = pageToday(); const n = t.querySelector('#tc-' + cid), o = document.getElementById('tc-' + cid); if (n && o) o.replaceWith(n); const nn = t.querySelector('.notice'), on = document.querySelector('#main .notice'); if (nn && on) on.replaceWith(nn); }
 
@@ -1593,7 +1670,7 @@ function editClient(id){
     ${F.field('出生日期', F.date('birth'), { hint:'用於年齡與體能常模' })}${isRes() ? F.field('房號／床號', F.input('bed', { ph:'例：201-1' })) : '<div></div>'}
     ${F.field('主要診斷', F.input('diagnosis', { ph:'例：腦中風右側偏癱' }), { cls:'span2' })}
     ${F.field('使用輔具', F.input('aids', { ph:'例：四腳拐、輪椅' }))}${F.field('個別注意事項', F.input('caution', { ph:'例：姿勢性低血壓' }))}
-    ${F.field('服務狀態', F.select('status', ['服務中', '結案'], { blank:false }))}</div>`,
+    ${F.field('服務狀態', F.select('status', ['服務中', '結案'], { blank:false }))}${F.field('參與同意書簽署日期', F.date('consentDate'), { hint:'可到「列印輸出」產生同意書' })}</div>`,
     { wide:true, extra:id ? btn('刪除此' + term(), `closeModal(true);deleteClient('${id}')`, { k:'danger ghost', i:'trash' }) : '',
       onSave:() => { if (!S.edit.name?.trim()) { toast('請填寫姓名', 'err'); return false; } const s = Store.upsert('clients', S.edit); S.dirty = false; toast('已儲存'); if (!id) App.go('#/client/' + s.id); else route(); }, restore:() => { S.dirty = false; } });
 }
@@ -1617,7 +1694,8 @@ function nextStepHTML(c){
   else if (!p) { cur = 1; act = `<a class="btn primary" href="#/plan/new/${c.id}?from=${last.id}">${icon('rx', 16)}依評估開立計畫</a>`; }
   else { const due = diffDays(todayISO(), p.endDate); cur = due <= 14 ? 3 : 2;
     act = `<a class="btn ${cur === 2 ? 'primary' : ''}" href="#/today">${icon('check', 16)}今日勾選</a><a class="btn ${cur === 3 ? 'primary' : ''}" href="#/assess/new/${c.id}">${icon('clip', 16)}再評估</a><a class="btn" href="#/assess/new/${c.id}?type=結案評估">結案評估</a><span class="muted">計畫至 ${rocDate(p.endDate)}${due <= 14 ? (due < 0 ? '（已到期，請再評）' : `（${due} 天後到期，請安排再評）`) : ''}</span>`; }
-  return `<div class="flow card"><div class="flow-steps">${steps.map((t, i) => `<span class="fs ${i < cur ? 'done' : i === cur ? 'cur' : ''}">${i < cur ? '✓' : i + 1} ${t}</span>`).join('<span class="fa">→</span>')}</div><div class="flow-act"><b>下一步：</b>${act}</div></div>`;
+  const consent = c.status !== '結案' && !c.consentDate ? `<div class="flow-warn">⚠ 尚未記錄「復能計畫參與同意書」簽署日期 ${exportBar('csf_' + c.id, () => consentDoc(Store.get('clients', c.id)))}<a class="btn sm ghost" href="javascript:editClient('${c.id}')">填寫簽署日期</a></div>` : '';
+  return `<div class="flow card"><div class="flow-steps">${steps.map((t, i) => `<span class="fs ${i < cur ? 'done' : i === cur ? 'cur' : ''}">${i < cur ? '✓' : i + 1} ${t}</span>`).join('<span class="fa">→</span>')}</div><div class="flow-act"><b>下一步：</b>${act}</div>${consent}</div>`;
 }
 function cAssess(c){
   const as = Logic.assessmentsOf(c.id).reverse();
@@ -1657,7 +1735,7 @@ function cCheck(c){
   return `<div class="toolbar"><button class="btn" onclick="S.week=addDays('${ws}',-7);route()">${icon('back', 16)}上週</button><b>${rocDate(dates[0])} ～ ${rocDate(dates[6])}</b><button class="btn" onclick="S.week=addDays('${ws}',7);route()">下週</button>${ws !== weekStart(todayISO()) ? btn('回到本週', `S.week=null;route()`) : ''}
     <span class="sp"></span><span class="muted">本週 ${st.ok + st.part}/${st.exp}｜累計執行率 ${all.rate ?? '—'}%</span></div>
   <section class="card flush"><div class="tbl-wrap"><table class="ck"><thead><tr><th class="ck-n">項目</th>${dates.map(d => `<th class="${d === todayISO() ? 'today' : ''}">${d.slice(5).replace('-', '/')}<br><small>週${WEEKDAYS[weekday(d)]}</small></th>`).join('')}</tr></thead><tbody>
-  ${(p.items || []).map(it => `<tr><th class="ck-n"><div class="ck-it">${thumb(it.img, 'sm')}<div><b>${esc(it.name)}</b><small>${esc(it.dose || '')}｜${esc(it.executor || '')}</small></div></div></th>${dates.map(d => { if (!scheduled(p, it, d)) return '<td class="off">—</td>'; const r = recs.get(it.id + '|' + d); return `<td><button class="ckb ${r ? 's-' + r.status : ''}" onclick="setCheck('${p.id}','${it.id}','${d}',NEXT['${r?.status || ''}']);route()" title="${r ? esc(r.by || '') : '尚未記錄'}" aria-label="${esc(it.name)} ${d}">${r ? SYM[r.status] : ''}</button></td>`; }).join('')}</tr>`).join('')}
+  ${checkables(p).map(it => `<tr class="${it.group ? 'ck-grp' : ''}"><th class="ck-n"><div class="ck-it">${it.group ? groupThumb('sm') : thumb(it.img, 'sm')}<div><b>${it.group ? '<span class="grp-tag">團體</span>' : ''}${esc(it.name)}</b><small>${esc(it.dose || '')}｜${esc(it.executor || '')}</small></div></div></th>${dates.map(d => { if (!scheduled(p, it, d)) return '<td class="off">—</td>'; const r = recs.get(it.id + '|' + d); return `<td><button class="ckb ${r ? 's-' + r.status : ''}" onclick="setCheck('${p.id}','${it.id}','${d}',NEXT['${r?.status || ''}']);route()" title="${r ? esc(r.by || '') : '尚未記錄'}" aria-label="${esc(it.name)} ${d}">${r ? SYM[r.status] : ''}</button></td>`; }).join('')}</tr>`).join('')}
   </tbody></table></div></section>
   <section class="card"><h2>本週備註</h2><textarea class="inp" rows="3" placeholder="未執行原因、反應、進步或異常狀況…" onchange="saveWeekNote('${p.id}','${c.id}','${ws}',this.value)">${esc(note?.note || '')}</textarea>
     <div class="exp-row"><span>印出本週檢核表</span>${exportBar('wk_' + p.id, () => indivCheckDoc(activePlan(c.id), { mode:'week', week:ws, filled:true }), ['pdf', 'word'])}</div></section>`;
@@ -1671,7 +1749,9 @@ function cExport(c){
   const pickRe = expOpt.re && res.find(a => a.id === expOpt.re) ? expOpt.re : res.at(-1)?.id;
   const row = (n, title, desc, body) => `<section class="card form-row"><div class="fr-h"><span class="sn">${n}</span><div><h2>${title}</h2><p class="hint">${desc}</p></div></div>${body}</section>`;
   const off = t => `<p class="muted">${t}</p>`;
-  return `<div class="notice">以下四種表單對應評鑑所需紀錄，每一種都可輸出 <b>PDF（列印）、Word、PPT</b>。</div>
+  return `<div class="notice">以下表單對應評鑑所需紀錄，每一種都可輸出 <b>PDF（列印）、Word、PPT（A4 版面）</b>。<br>${signPrefHTML()}</div>
+  ${row(0, '復能計畫參與同意書', '自願參與、可隨時結束、結束條件、雙方權利義務、安全、個資與照片使用；請' + term() + '或家屬簽名。',
+    `<div class="exp-row"><span>${c.consentDate ? '已於 ' + rocDate(c.consentDate) + ' 簽署' : '<span class="warn-t">尚未記錄簽署日期</span>（簽署後到「編輯基本資料」填寫）'}</span>${exportBar('cs_' + c.id, () => consentDoc(Store.get('clients', c.id)))}</div>`)}
   ${row(1, '初評與復能計畫表', '初評結果、最想做到的事、需復能問題，加上依初評擬定的目標、個別與團體介入。',
     ini ? `<div class="exp-row"><span>${rocDate(ini.date)} ${esc(ini.type)}</span>${exportBar('ini_' + ini.id, () => initialDoc(Store.get('assessments', ini.id)))}</div>` : off('尚未完成初評'))}
   ${row(2, '每日執行檢核表', `印出後由照服員、治療師或${term()}本人勾選；也可帶入系統中已勾選的紀錄。`,
@@ -1845,7 +1925,7 @@ function planHTML(){
   <section class="card"><h2>團體介入 <small>勾選要參加的團體即可，不需填活動紀錄</small></h2>
     <div class="pills">${types.map(t => { const on = p.groups.some(g => g.type === t); return `<label class="pill"><input type="checkbox" ${on ? 'checked' : ''} onchange="toggleGroup('${esc(t)}',this.checked)"><span>${esc(t)}</span></label>`; }).join('')}
       <input class="inp sm" placeholder="其他團體，按 Enter" onkeydown="if(event.key==='Enter'&&this.value.trim()){toggleGroup(this.value.trim(),true)}"></div>
-    ${p.groups.length ? `<div class="grp-rows">${p.groups.map((g, i) => `<div class="row-edit"><b class="w8">${esc(g.type)}</b>${F.input(`groups.${i}.freq`, { ph:'頻率，例：每週2次' })}${F.input(`groups.${i}.note`, { ph:'備註（選填）' })}</div>`).join('')}</div>` : ''}</section>
+    ${p.groups.length ? `<div class="grp-rows">${p.groups.map((g, i) => `<div class="grp-row"><div class="row-edit"><b class="w8">${esc(g.type)}</b>${F.input(`groups.${i}.freq`, { ph:'頻率，例：每週2次' })}${F.input(`groups.${i}.note`, { ph:'備註（選填）' })}</div><div class="pills sm">參加日：${[1, 2, 3, 4, 5, 6, 7].map(w => F.checkArr(`groups.${i}.days`, w, WEEKDAYS[w], true)).join('')}</div></div>`).join('')}</div>` : ''}</section>
   <section class="card"><h2>建議評估輔具 <small>資料來自長照輔具資料庫</small><span class="sp"></span><a class="btn sm" href="${DEVICE_DB_URL}" target="_blank" rel="noopener">開啟長照輔具資料庫 ↗</a></h2>
     <div class="pills">${[...new Set([...sugDev, ...(S.allDev ? Object.keys(DEVICES) : [])])].map(d => `<label class="pill" title="${esc(DEVICES[d]?.s || '')}"><input type="checkbox" ${p.devices.includes(d) ? 'checked' : ''} onchange="toggleDev('${esc(d)}',this.checked)"><span>${sugDev.includes(d) ? '★ ' : ''}${esc(d)}</span></label>`).join('')}</div>
     <p class="hint">★＝依本次評估建議。滑鼠停在項目上可看說明。 <a href="javascript:void(0)" onclick="S.allDev=!S.allDev;rerender(planHTML)">${S.allDev ? '只顯示建議項目' : `顯示全部 ${Object.keys(DEVICES).length} 項常用輔具`}</a></p></section>
@@ -1890,7 +1970,7 @@ function goalCard(g, i){
       ${F.field('目前狀況', F.input(`goals.${i}.baseline`, { ph:'例：需家人扶著，走到一半要休息' }), { cls:'span2' })}</div>
     <div class="goal-preview"><span class="lbl">目標句</span><span id="gp-${i}">${esc(g.text || '（填寫上方欄位後自動組成目標）')}</span></div></div>`;
 }
-function toggleGroup(t, on){ const g = S.edit.groups; if (on && !g.some(x => x.type === t)) g.push({ type:t, freq:'', note:'' }); if (!on) S.edit.groups = g.filter(x => x.type !== t); S.dirty = true; rerender(planHTML); }
+function toggleGroup(t, on){ const g = S.edit.groups; if (on && !g.some(x => x.type === t)) g.push({ type:t, freq:'', note:'', days:defaultDays() }); if (!on) S.edit.groups = g.filter(x => x.type !== t); S.dirty = true; rerender(planHTML); }
 function toggleDev(d, on){ S.edit.devices = on ? [...new Set([...S.edit.devices, d])] : S.edit.devices.filter(x => x !== d); S.dirty = true; }
 function addItem(exId){ S.edit.items.push(mkItem(exId)); S.dirty = true; if (!$('#picker')) rerender(planHTML); toast('已加入：' + (findItem(exId)?.name || '自訂項目')); }
 
@@ -2054,7 +2134,7 @@ function loadDemo(){
   // 依週數讓完成率逐漸提高（前期較多「部分」，後期多「完成」）；今天留空讓使用者試點
   const fill = (p, from, to) => {
     const span = Math.max(1, diffDays(from, to));
-    for (let d = from; d <= to && d < T; d = addDays(d, 1)) for (const x of p.items) {
+    for (let d = from; d <= to && d < T; d = addDays(d, 1)) for (const x of checkables(p)) {
       if (!scheduled(p, x, d) || rnd() < 0.05) continue;
       const prog = diffDays(from, d) / span, r = rnd();
       put('checks', { clientId:p.clientId, planId:p.id, itemId:x.id, date:d, status:r < 0.55 + prog * 0.3 ? 'ok' : r < 0.9 ? 'part' : 'skip', by:rnd() > 0.5 ? '黃○英' : '吳○明' });
@@ -2071,7 +2151,7 @@ function loadDemo(){
     goals:[newGoal({ id:'g1', activity:'自己上廁所', when:'12 週內', how:'扶著廁所扶手', assist:'在旁人監督下（不需碰觸）', scene:'白天自己去廁所，不再需要包尿布', measure:'每天 3 次中有 2 次成功', baseline:'需照服員扶持並協助拉褲子（自評表現 3/10）' }),
       newGoal({ id:'g2', activity:'自己走去市場買菜', when:'12 週內', how:'使用四腳拐', assist:'在旁人監督下（不需碰觸）', scene:'從家門口走到巷口市場（約 200 公尺）挑選晚餐要煮的菜', measure:'中途休息不超過 1 次', baseline:'只能在室內走 20 公尺（自評表現 2/10）' })],
     items:[it('i1', 'sit-to-stand', { dose:'8 下 × 2 組' }), it('i2', 'single-leg-stance-supported'), it('i3', 'toilet-transfer', { times:2 }), it('i4', 'button-board', { days:[1, 3, 5] }), it('i5', 'forward-walking-line', { executor:'治療師', days:[2, 4], dose:'20 公尺 × 2 趟' })],
-    groups:[{ type:'運動團體', freq:'每週 3 次', note:'' }, { type:'藝術團體', freq:'每週 1 次', note:'喜歡畫畫' }], devices:['馬桶扶手架', '防滑措施'], note:'女兒可於居家每天晚飯後陪同坐站 10 下。' });
+    groups:[{ type:'運動團體', freq:'每週 3 次', note:'', days:[1, 3, 5] }, { type:'藝術團體', freq:'每週 1 次', note:'喜歡畫畫', days:[2] }], devices:['馬桶扶手架', '防滑措施'], note:'女兒可於居家每天晚飯後陪同坐站 10 下。' });
   fill(p1, p1.startDate, p1.endDate);
   [[70, '前兩週右肩痛，扶桌單腳站常只做一半。'], [42, '如廁時已能自己拉褲子，只需在旁看著。'], [14, '走廊步行可達 60 公尺，中途休息 1 次。']].forEach(([d, n]) => put('weekNotes', { planId:p1.id, clientId:C[0].id, week:weekStart(ago(d)), note:n, by:'黃○英' }));
   const a2 = mkA(C[0], { date:ago(2), type:'再評', adl:[10, 10, 5, 10, 0, 10, 5, 10, 10, 10],
@@ -2085,7 +2165,7 @@ function loadDemo(){
     goals:[newGoal({ id:'g2', activity:'自己走去市場買菜', when:'12 週內', how:'使用四腳拐', assist:'可獨立', scene:'從家門口走到巷口市場，買一小袋菜回家煮給女兒吃', measure:'中途休息不超過 1 次', baseline:'可走到巷口但需休息 2 次（自評表現 4/10）' }),
       newGoal({ id:'g3', activity:'畫畫', when:'8 週內', how:'使用加粗握柄的畫筆', assist:'可獨立', scene:'用右手畫一張生日賀卡送給孫女', measure:'完成 1 件作品', baseline:'右手握筆 5 分鐘就累，作品要別人幫忙完成（自評表現 6/10）' })],
     items:[it('i1', 'sit-to-stand', { dose:'10 下 × 3 組' }), it('i6', 'tandem-stance'), it('i7', 'carry-light-object-walk', { days:[1, 3, 5] }), it('i8', 'walking-program', { executor:'治療師', days:[2, 4], dose:'10 分鐘' }), it('i9', 'grip-towel', { days:[1, 3, 5] })],
-    groups:[{ type:'運動團體', freq:'每週 3 次', note:'' }, { type:'藝術團體', freq:'每週 1 次', note:'練習右手塗色' }], devices:['防滑措施'], note:'如廁目標已達成，改為維持（照服員持續在旁監督）；新增持物步行為上市場做準備。' });
+    groups:[{ type:'運動團體', freq:'每週 3 次', note:'', days:[1, 3, 5] }, { type:'藝術團體', freq:'每週 1 次', note:'練習右手塗色', days:[2] }], devices:['防滑措施'], note:'如廁目標已達成，改為維持（照服員持續在旁監督）；新增持物步行為上市場做準備。' });
   fill(p2, p2.startDate, T);
 
   /* ---------- 2. 陳○水：計畫執行中（輕度失智） ---------- */
@@ -2098,7 +2178,7 @@ function loadDemo(){
     goals:[newGoal({ id:'g4', activity:'自己去公園散步', when:'12 週內', how:'使用助行器', assist:'在旁人監督下（不需碰觸）', scene:'從中心門口走到隔壁公園，和老朋友打招呼再走回來', measure:'每週 3 次、自己找到回來的路', baseline:'需陪同並提示方向' }),
       newGoal({ id:'g5', activity:'和朋友下象棋', when:'8 週內', how:'', assist:'在口頭提示下', scene:'在中心和老朋友下完一盤象棋', measure:'每週 2 次、全程參與', baseline:'下到一半會忘記輪到誰' })],
     items:[it('i10', 'sit-to-stand', { dose:'10 下 × 2 組' }), it('i11', 'standing-weight-shift'), it('i12', 'cloth-folding', { days:[1, 3, 5] }), it('i13', 'walking-program', { days:[1, 3, 5], dose:'到公園來回約 15 分鐘' })],
-    groups:[{ type:'認知團體', freq:'每週 2 次', note:'' }, { type:'懷舊團體', freq:'每週 1 次', note:'喜歡聊務農' }, { type:'運動團體', freq:'每週 3 次', note:'' }], devices:['防走失定位裝置'] });
+    groups:[{ type:'認知團體', freq:'每週 2 次', note:'', days:[2, 4] }, { type:'懷舊團體', freq:'每週 1 次', note:'喜歡聊務農', days:[3] }, { type:'運動團體', freq:'每週 3 次', note:'', days:[1, 3, 5] }], devices:['防走失定位裝置'] });
   fill(p3, p3.startDate, T);
   put('weekNotes', { planId:p3.id, clientId:C[1].id, week:weekStart(ago(7)), note:'週三下午焦躁，散步改到上午後配合度變好。', by:'吳○明' });
 
@@ -2111,7 +2191,7 @@ function loadDemo(){
   const p4 = put('plans', { id:'dl_p3', clientId:C[2].id, assessmentId:a4.id, version:1, status:'執行中', startDate:ago(4), endDate:addDays(ago(4), 83), author:'林○君', role:'物理治療師', problems:[],
     goals:[newGoal({ id:'g6', activity:'自己從輪椅移到椅子', when:'12 週內', how:'先坐 30 秒再起身，扶著椅子扶手', assist:'在少量協助下', scene:'從輪椅移到餐桌椅子上，和太太一起吃晚飯', measure:'每天午餐、晚餐各 1 次', baseline:'需中度協助（自評表現 3/10）' })],
     items:[it('i14', 'sit-pivot-transfer', { times:2 }), it('i15', 'sit-to-stand', { dose:'5 下 × 2 組', caution:'起身前先坐 30 秒，頭暈即停' }), it('i16', 'metronome-stepping'), it('i17', 'oral_exercise')],
-    groups:[{ type:'手工藝團體', freq:'每週 2 次', note:'木工、手作' }, { type:'社交團體', freq:'每週 1 次', note:'' }], devices:['移位腰帶與人力移位吊帶', '移位滑板'] });
+    groups:[{ type:'手工藝團體', freq:'每週 2 次', note:'木工、手作', days:[2, 4] }, { type:'社交團體', freq:'每週 1 次', note:'', days:[5] }], devices:['移位腰帶與人力移位吊帶', '移位滑板'] });
   fill(p4, p4.startDate, T);
 
   for (const pl of Store.all('plans').filter(x => x.demo)) { pl.problems = planProblemsFor(Store.get('assessments', pl.assessmentId), pl.goals).map(x => x.text); Store.upsert('plans', pl); }

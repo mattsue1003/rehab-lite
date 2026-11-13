@@ -82,7 +82,7 @@ function planDoc(pl){
 
 /* ---------- 個別執行檢核表 ---------- */
 function indivCheckDoc(pl, o){
-  const c = Store.get('clients', pl.clientId), items = pl.items || [];
+  const c = Store.get('clients', pl.clientId), items = checkables(pl);
   const dates = o.mode === 'month' ? monthDays(o.month) : Array.from({ length:7 }, (_, i) => addDays(o.week, i));
   const inPlan = d => d >= pl.startDate && d <= pl.endDate;
   const recs = o.filled ? new Map(Store.all('checks').filter(x => x.clientId === pl.clientId).map(x => [x.itemId + '|' + x.date, x])) : new Map();
@@ -97,12 +97,12 @@ function indivCheckDoc(pl, o){
       { t:'p', text:'今天的感覺／想跟治療師說的話：\n' + blankLines(2) }] };
   }
   const head = o.mode === 'month' ? ['項目／劑量', ...dates.map(d => String(+d.slice(8)))] : ['項目', '劑量／頻率', '執行者', ...dates.map(dh)];
-  const rows = items.map(it => o.mode === 'month' ? [`${it.name}\n${it.dose || ''}`, ...dates.map(d => cellFor(it, d))] : [`${it.name}\n（${it.type || ''}）`, `${it.dose || ''}\n${freqText(it)}`, it.executor || '', ...dates.map(d => cellFor(it, d))]);
+  const rows = items.map(it => o.mode === 'month' ? [`${it.name}\n${it.dose || ''}`, ...dates.map(d => cellFor(it, d))] : [it.group ? `【團體】${it.name}` : `${it.name}\n（${it.type || ''}）`, `${it.dose || ''}\n${it.group ? daysText(it.days) : freqText(it)}`, it.executor || '', ...dates.map(d => cellFor(it, d))]);
   rows.push(o.mode === 'month' ? ['執行者簽名', ...dates.map(() => '')] : ['執行者簽名', '', '', ...dates.map(() => '')]);
   const note = o.filled && o.mode === 'week' ? Store.all('weekNotes').find(x => x.planId === pl.id && x.week === o.week)?.note : '';
   return { title:'個別復能執行檢核表', sub:`${c.name}${isRes() && c.bed ? '（' + c.bed + '）' : ''}｜${range}｜計畫 v${pl.version || 1}`, landscape:true, blocks:[
     { t:'p', text:`${SYM_LABEL}　　「—」為非執行日${groups ? '　　' + groups : ''}`, small:true },
     { t:'table', head, rows, widths:o.mode === 'month' ? [3, ...dates.map(() => 0.55)] : [2.4, 2, 1.2, ...dates.map(() => 1.1)], center:o.mode === 'month' ? dates.map((_, i) => i + 1) : dates.map((_, i) => i + 3), rowH:o.mode === 'month' ? 9 : 13, fs:o.mode === 'month' ? 8 : 10 },
-    { t:'p', text:'執行說明：' + items.map((it, i) => `${i + 1}. ${it.name}：${it.how || ''}${it.caution ? `（注意：${it.caution}）` : ''}`).join('　'), small:true },
+    { t:'p', text:'執行說明：' + items.filter(it => !it.group).map((it, i) => `${i + 1}. ${it.name}：${it.how || ''}${it.caution ? `（注意：${it.caution}）` : ''}`).join('　') + (items.some(it => it.group) ? '　團體列：✓ 有參加　△ 部分參與　✕ 未參加' : ''), small:true },
     { t:'p', text:'備註（未執行原因、反應、異常狀況）：\n' + (note || blankLines(o.mode === 'month' ? 2 : 3)) }] };
 }
