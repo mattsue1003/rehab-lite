@@ -14,17 +14,22 @@ const App = {
 function renderShell(){
   $('#side').innerHTML = `
     <div class="brand"><div class="logo">${LOGO_SVG}</div><div class="b-txt"><div class="b1">${APP_TITLE}</div><div class="b2">${esc([Store.DB.meta.orgName, Store.DB.meta.orgType].filter(Boolean).join('｜'))}${Store.DB.meta.orgType ? ' <a href="#/settings" class="b2-link">更換</a>' : ''}</div></div></div>
-    <nav>${NAV.map(([h, i, l]) => `<a href="${h}">${icon(i)}<span>${l}</span></a>`).join('')}</nav>
+    <nav>${NAV.map(([h, i, l]) => `<a href="${h}">${icon(i)}<span>${l}</span></a>`).join('')}<a href="javascript:void(0)" class="m-report" onclick="document.body.classList.remove('nav-open');window.openReport&&openReport()">${icon('flag')}<span>回報錯誤／建議</span></a></nav>
     <div class="side-foot">${folderStatusHTML()}</div>`;
   $('#top').innerHTML = `<button class="icon-btn only-m" onclick="document.body.classList.toggle('nav-open')" aria-label="選單">${icon('menu')}</button>
     <div class="top-title" id="top-title"></div><span class="sp"></span>
-    <label class="who">記錄者<input class="inp sm" style="width:140px" value="${esc(App.currentUserId())}" placeholder="輸入姓名" onchange="App.setWho(this.value)"></label>`;
+    <label class="who"><span class="who-l">記錄者</span><input class="inp sm" value="${esc(App.currentUserId())}" placeholder="記錄者姓名" aria-label="記錄者姓名" onchange="App.setWho(this.value)"></label>`;
+  // 手機：底部分頁列＋側欄遮罩
+  let bn = $('#bnav'); if (!bn) { bn = document.createElement('nav'); bn.id = 'bnav'; bn.setAttribute('aria-label', '主要功能'); document.body.appendChild(bn); }
+  bn.innerHTML = [['#/', 'home', '首頁'], ['#/today', 'check', '今日勾選'], ['#/clients', 'users', term()], ['#/library', 'clip', '項目庫']].map(([h, i, l]) => `<a href="${h}">${icon(i, 22)}<span>${l}</span></a>`).join('')
+    + `<button type="button" onclick="document.body.classList.toggle('nav-open')">${icon('menu', 22)}<span>更多</span></button>`;
+  if (!$('#scrim')) { const s = document.createElement('div'); s.id = 'scrim'; s.onclick = () => document.body.classList.remove('nav-open'); document.body.appendChild(s); }
 }
 function setTitle(t, sub = ''){ $('#top-title').innerHTML = `<b>${esc(t)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}`; document.title = t + '｜' + APP_TITLE; }
 function navActive(){
   let cur = location.hash || '#/'; try { cur = decodeURIComponent(cur); } catch(e){}
   if (/^#\/(client|assess|plan)\b/.test(cur)) cur = '#/clients';
-  document.querySelectorAll('#side nav a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === cur));
+  document.querySelectorAll('#side nav a, #bnav a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === cur));
   document.body.classList.remove('nav-open');
 }
 const ROUTES = [
@@ -52,6 +57,22 @@ window.addEventListener('hashchange', () => {
   route();
 });
 window.addEventListener('beforeunload', e => { if (S.dirty) { e.preventDefault(); e.returnValue = ''; } });
+/* 手機版：表格改為卡片（每格加上欄名），流程列捲到目前步驟 */
+function mobilize(root = document.getElementById('main')){
+  if (!root) return;
+  root.querySelectorAll('table.tbl:not(.qa)').forEach(t => {
+    const hs = [...t.querySelectorAll('thead th')].map(th => th.innerText.replace(/\s+/g, ' ').trim());
+    if (!hs.length) return; t.classList.add('stk');
+    t.querySelectorAll('tbody tr').forEach(tr => [...tr.children].forEach((td, i) => {
+      if (td.hasAttribute('data-label')) return;
+      td.setAttribute('data-label', td.colSpan > 1 ? '' : hs[i] || '');
+      // 長內容、按鈕、輸入框佔整行；短數值兩欄並排
+      if (td.colSpan > 1 || td.querySelector('.btn,.exp,input:not([type=radio]):not([type=checkbox]),select,textarea,.mini-bar') || td.innerText.trim().length + (hs[i] || '').length > 13) td.classList.add('w');
+    }));
+  });
+  root.querySelectorAll('.flow-steps').forEach(f => { const c = f.querySelector('.fs.cur'); if (c && f.scrollWidth > f.clientWidth) f.scrollLeft = Math.max(0, c.offsetLeft - f.offsetLeft - 40); });
+}
+if (typeof MutationObserver !== 'undefined' && document.getElementById) new MutationObserver(() => { clearTimeout(mobilize._t); mobilize._t = setTimeout(() => mobilize(), 30); }).observe(document.getElementById('main') || document.body, { childList:true, subtree:true });
 function rerender(fn){ const y = window.scrollY; $('#main').innerHTML = fn(); window.scrollTo(0, y); }
 
 /* ---------------- 首頁 ---------------- */

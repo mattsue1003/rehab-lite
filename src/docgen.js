@@ -51,7 +51,7 @@ function docToHTML(doc){
     }
     else if (b.t === 'items') out.push(`<div class="d-items">${b.items.map((x, i) => `<div class="d-item">${x.img ? `<img src="${esc(x.img)}" alt="">` : ''}<div class="d-it"><b>${i + 1}. ${esc(x.name)}</b> <span class="d-tag">${esc(x.type || '')}</span>
       <div class="d-meta">劑量：${esc(x.dose || '')}｜${esc(x.freq || '')}｜${esc(x.executor || '')}</div>${x.how ? `<div>${esc(x.how)}</div>` : ''}${x.steps ? `<div><b>步驟：</b>${esc(x.steps)}</div>` : ''}${x.caution ? `<div class="d-warn">注意：${esc(x.caution)}</div>` : ''}</div></div>`).join('')}</div>`);
-    else if (b.t === 'sign') out.push(`<div class="d-sign">${b.items.map(x => `<div>${esc(x)}：<span></span></div>`).join('')}</div>`);
+    else if (b.t === 'sign') out.push(`<table class="d-sign">${signRows(b.items).map(x => `<tr><th>${esc(x).replace(/\n/g, '<br>')}</th><td class="ln"></td><td class="dt">${SIGN_DATE}</td></tr>`).join('')}</table>`);
   }
   return out.join('\n');
 }
@@ -63,6 +63,9 @@ async function printDoc(doc){
   setTimeout(() => { window.print(); document.title = old; }, 200);
 }
 
+/* 簽名欄：每位簽名者一列（身分｜簽名線｜日期），「日期」不再單獨成欄 */
+const signRows = items => items.filter(x => x !== '日期');
+const SIGN_DATE = '日期：　　年　　月　　日', SIGN_W = [0.28, 0.38, 0.34];
 /* ---------- Word（.docx，以 JSZip 自行組 OOXML） ---------- */
 const xe = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 function wRun(text, o = {}){
@@ -98,6 +101,13 @@ function wItems(ctx, items, totalW, big){
   }).join('');
   return `<w:tbl><w:tblPr><w:tblW w:w="${totalW}" w:type="dxa"/><w:tblLayout w:type="fixed"/><w:tblBorders>${border}</w:tblBorders><w:tblCellMar><w:top w:w="60" w:type="dxa"/><w:left w:w="100" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="${iw}"/><w:gridCol w:w="${tw}"/></w:tblGrid>${rows}</w:tbl>${wPara('', { after:60 })}`;
 }
+function wSign(items, totalW, big = 1){
+  // 以定位點畫簽名線（底線前置字元），Word、Pages、Google 文件都能正確顯示
+  const sz = Math.round(22 * big), p1 = Math.round(totalW * SIGN_W[0]), p2 = Math.round(totalW * (SIGN_W[0] + SIGN_W[1]));
+  const tabs = `<w:tabs><w:tab w:val="left" w:pos="${p1}"/><w:tab w:val="left" w:leader="underscore" w:pos="${p2}"/></w:tabs>`;
+  const row = (x, i) => `<w:p><w:pPr>${tabs}<w:keepNext/><w:keepLines/><w:spacing w:before="${i ? 380 : 480}" w:after="0"/></w:pPr>${wRun(x, { b:true, sz })}<w:r><w:rPr><w:sz w:val="${sz}"/></w:rPr><w:tab/><w:tab/><w:t xml:space="preserve">　${SIGN_DATE}</w:t></w:r></w:p>`;
+  return items.map(row).join('') + wPara('', { after:160 });
+}
 function docToDocxXML(doc, ctx){
   const W = doc.landscape ? 16838 : 11906, H = doc.landscape ? 11906 : 16838, M = 680, TW = W - M * 2, big = doc.big ? 1.4 : 1;
   const body = [wPara(orgName(), { jc:'center', sz:22, after:0, color:'7A6F5D' }), wPara(doc.title, { jc:'center', b:true, sz:Math.round(34 * big), after:40 }), doc.sub ? wPara(doc.sub, { jc:'center', sz:20, color:'7A6F5D', after:160 }) : ''];
@@ -107,7 +117,7 @@ function docToDocxXML(doc, ctx){
     else if (b.t === 'kv') { const n = b.cols || 2, rows = []; for (let i = 0; i < b.rows.length; i += n) { const r = b.rows.slice(i, i + n); while (r.length < n) r.push(['', '']); rows.push(r.flat()); } body.push(wTable(ctx, null, rows, Array.from({ length:n }, () => [1, 2.2]).flat(), TW, { fs:10 })); }
     else if (b.t === 'table') body.push(wTable(ctx, b.head, b.rows, b.widths || b.head.map(() => 1), TW, { center:b.center, rowH:b.rowH, fs:(b.fs || 10) * (doc.big ? 1.3 : 1) }));
     else if (b.t === 'items') body.push(wItems(ctx, b.items, TW, doc.big));
-    else if (b.t === 'sign') body.push(wPara(b.items.map(x => `${x}：＿＿＿＿＿＿＿＿`).join('　　'), { before:360, sz:22 }));
+    else if (b.t === 'sign') body.push(wSign(signRows(b.items), TW, big));
   }
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:body>${body.join('')}<w:sectPr><w:pgSz w:w="${W}" w:h="${H}"${doc.landscape ? ' w:orient="landscape"' : ''}/><w:pgMar w:top="${M}" w:right="${M}" w:bottom="${M}" w:left="${M}" w:header="400" w:footer="400" w:gutter="0"/></w:sectPr></w:body></w:document>`;
 }
@@ -193,7 +203,17 @@ async function downloadPptx(doc){
       if (x.caution) T('注意：' + x.caution, { x:tx, y:ty + 0.03, w:tw - 0.1, h:textLines('注意：' + x.caution, tw, fs) * lh, fontSize:fs, color:PC.warn });
       y += h + 0.08;
     }
-    else if (b.t === 'sign') { need(0.7); y += 0.3; T(b.items.map(x => `${x}：＿＿＿＿＿＿＿＿`).join('　　'), { x:M, y, w:CW, h:0.3, fontSize:11 }); y += 0.4; }
+    else if (b.t === 'sign') {
+      const rows = signRows(b.items), rh = 0.62 * k, lw = CW * SIGN_W[0], ln = CW * SIGN_W[1], fs = 11 * k;
+      need(0.25 + rows.length * rh); y += 0.25;
+      for (const x of rows) {
+        T(x, { x:M, y:y + rh - 0.46 * k, w:lw - 0.1, h:0.42 * k, fontSize:fs, bold:true, valign:'bottom' });
+        s.addShape(pp.ShapeType.line, { x:M + lw, y:y + rh - 0.06, w:ln, h:0, line:{ color:'000000', width:0.75 } });
+        T(SIGN_DATE, { x:M + lw + ln + 0.2, y:y + rh - 0.32 * k, w:CW - lw - ln - 0.2, h:0.28 * k, fontSize:fs, valign:'bottom' });
+        y += rh;
+      }
+      y += 0.18;
+    }
   }
   const blob = await pp.write({ outputType:'blob', compression:true });
   await download(fileSafe(doc.title) + '_' + todayISO() + '.pptx', blob); toast('已產生 PowerPoint 檔（A4 版面）');

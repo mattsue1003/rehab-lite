@@ -17,7 +17,7 @@ function pageTutorial(){
     <section class="card tut-player"><video id="tutv" controls preload="metadata" playsinline poster="${TUTORIAL.poster}" ontimeupdate="tutSync(this.currentTime)">
       <source src="${TUTORIAL.src}" type="video/mp4"><track kind="captions" src="${TUTORIAL.vtt}" srclang="zh-Hant" label="中文字幕">
       您的瀏覽器無法播放影片。</video>
-      <p class="hint">畫面上已有字幕，不開聲音也能看。點右側章節可以直接跳到想看的段落。</p></section>
+      <p class="hint">畫面上已有字幕，不開聲音也能看。點「章節」可以直接跳到想看的段落。</p></section>
     <aside class="card tut-ch"><h2>章節</h2><ol>${TUTORIAL.chapters.map((c, i) => `<li><button type="button" id="tch-${i}" onclick="tutGo(${c.t})"><span class="t">${mmss(c.t)}</span><span>${esc(c.title)}</span></button></li>`).join('')}</ol>
       <div class="tut-next"><b>看完之後</b>${Store.all('clients').length ? `<a class="btn primary" href="#/">${icon('home', 16)}回到首頁</a>` : `${btn('載入 3 個模擬個案試試看', 'loadDemo()', { k:'primary', i:'users' })}<a class="btn" href="#/clients">直接新增${term()}</a>`}</div></aside>
   </div>`;

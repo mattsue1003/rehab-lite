@@ -140,7 +140,7 @@ function consentDoc(c){
     { t:'p', text:'☐ 同意　☐ 不同意　拍攝練習過程照片，作為照顧紀錄與成效說明。\n☐ 同意　☐ 不同意　去識別化後，作為教學或成果分享使用。' },
     { t:'h', text:'八、同意聲明' },
     { t:'p', text:'本人已了解上述內容，並同意參加復能計畫。' },
-    { t:'sign', items:[`${term()}本人`, '家屬／法定代理人（關係：＿＿＿）', '說明人員', '日期'], keep:true },
+    { t:'sign', items:[`${term()}本人`, '家屬／法定代理人\n（關係：＿＿＿＿）', '說明人員'], keep:true },
     { t:'p', small:true, text:'本同意書為範本，可依機構規定修訂。一式兩份，雙方各執一份。' }];
   return { title:'復能計畫參與同意書', sub:c ? c.name : '', blocks, keepSign:true };
 }
