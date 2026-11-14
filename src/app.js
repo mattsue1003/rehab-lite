@@ -4,7 +4,7 @@
 const APP_TITLE = '復能計畫與執行檢核';
 /* 標誌：拄著拐杖向前走的長輩＋向上箭頭（找回能力、往前一步） */
 const LOGO_SVG = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9.5" cy="4.2" r="2.1"/><path d="M9.2 7.4L8.3 13"/><path d="M8.3 13l-1.7 4-1.2 4"/><path d="M8.3 13l2.4 3.4.5 4.6"/><path d="M9 8.9l3.2 2.6"/><path d="M12.2 11.2l.9 9.8"/><path d="M15.5 17.5l5-7"/><path d="M17.6 10.3h2.9v2.9"/></svg>`;
-const NAV = [['#/', 'home', '首頁'], ['#/today', 'check', '今日勾選'], ['#/clients', 'users', '個案名冊'], ['#/library', 'clip', '復能項目庫'], ['#/settings', 'gear', '設定與備份']];
+const NAV = [['#/', 'home', '首頁'], ['#/today', 'check', '今日勾選'], ['#/clients', 'users', '個案名冊'], ['#/library', 'clip', '復能項目庫'], ['#/tutorial', 'play', '使用教學'], ['#/settings', 'gear', '設定與備份']];
 const App = {
   currentUserId(){ try { return localStorage.getItem('rehabl:who') || ''; } catch(e){ return ''; } },
   setWho(v){ try { localStorage.setItem('rehabl:who', v.trim()); } catch(e){} toast('記錄者：' + (v.trim() || '（未填）')); },
@@ -38,6 +38,7 @@ const ROUTES = [
   [/^#\/today$/, () => pageToday()],
   [/^#\/library$/, () => pageLibrary()],
   [/^#\/settings$/, () => pageSettings()],
+  [/^#\/tutorial$/, () => pageTutorial()],
 ];
 let ignoreHash = false;
 function route(){
@@ -61,7 +62,7 @@ function pageHome(){
     <p>系統會依類型調整用語（個案／住民）、預設執行日（日照週一至五、住宿每天）與表單欄位（住宿加上房號床號）。<b>選錯了也沒關係，之後可在左上角「更換」或「設定與備份」改回來，資料都會保留。</b></p>
     <div class="field"><label class="lbl">機構名稱（會印在表單抬頭，可之後修改）</label><input class="inp" id="orgName" placeholder="例：○○日間照顧中心"></div>
     <div class="choice">${['日間照顧', '住宿機構'].map(t => `<button class="choice-b" onclick="setupOrg('${t}')"><b>${t}</b><small>${t === '日間照顧' ? '日照、小規機、家托' : '長照機構、護理之家、養護/安養機構'}</small></button>`).join('')}</div>
-    <p class="hint">想先看看操作方式？選完類型後，首頁可一鍵載入 3 個模擬個案。</p></section>`;
+    <p class="hint">想先看看操作方式？可以先<a href="#/tutorial">觀看使用教學影片</a>；選完類型後，首頁也可一鍵載入 3 個模擬個案。</p></section>`;
   const today = todayISO(), cs = Store.all('clients').filter(c => c.status !== '結案'), wd = '週' + WEEKDAYS[weekday(today)];
   let tot = 0, done = 0, plans = 0; const noAssess = [], noPlan = [], ending = [], noConsent = [], missed = [];
   for (const c of cs) {
@@ -92,7 +93,7 @@ function pageHome(){
     <section class="card"><h2>團體參與人數 <small>執行中計畫</small></h2>${Object.keys(grpCount).length ? `<div class="grp-count">${Object.entries(grpCount).map(([t, n]) => `<div class="gc">${thumb(GROUP_IMG[t] || GROUP_IMG._, 'sm')}<span>${esc(t)}</span><b>${n} 人</b></div>`).join('')}</div>` : empty('尚無團體介入')}</section>
     <section class="card"><h2>空白表單 <small>直接印出，手寫勾選</small></h2><div class="exp-row"><span>空白復能評估表</span>${exportBar('blankAssess', () => assessDoc(null, null))}</div><div class="exp-row"><span>空白復能計畫參與同意書</span>${exportBar('blankConsent', () => consentDoc(null))}</div></section></div>`;
   // 已有個案：先看今天要做什麼；還沒有個案：先看流程與開始方式
-  return cs.length ? `<div class="grid2">${todayCard}${todoCard}</div>${demoGuideHTML()}${folder}${flow}${bottom}` : `${flow}${folder}${startCard}${bottom}`;
+  return cs.length ? `${tutorialCardHTML()}<div class="grid2">${todayCard}${todoCard}</div>${demoGuideHTML()}${folder}${flow}${bottom}` : `${tutorialCardHTML()}${flow}${folder}${startCard}${bottom}`;
 }
 function setOrgType(t){
   const from = Store.DB.meta.orgType; if (from === t) return;
