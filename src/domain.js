@@ -75,10 +75,10 @@ const COPM_AREAS = [
   ['休閒', '靜態休閒（閱讀、手作、看電視）、動態休閒（散步、運動、旅遊）、社交（拜訪親友、宗教活動、聚會）', ['去公園散步', '去廟裡拜拜／上教會', '和朋友聊天、打麻將', '種花種菜', '唱歌', '寫書法、畫畫', '和家人出去旅遊']],
 ];
 const COPM_KW = [
-  [/廁|尿|便/, ['toilet-transfer', 'adl_toilet']], [/洗澡|沐浴|洗頭/, ['shower-step-entry']], [/穿|衣服|鞋|襪|鈕/, ['adl_dress', 'button-board']],
+  [/廁|尿|便/, ['toilet-transfer', 'adl_toilet']], [/洗澡|沐浴|洗頭/, ['shower-chair-transfer', 'shower-step-entry']], [/穿|衣服|鞋|襪|鈕/, ['adl_dress', 'button-board', 'shoe-donning']],
   [/吃|飯|進食|筷|湯匙/, ['adl_feed', 'spoon-scoop']], [/起床|翻身|坐起|床上/, ['bed-rolling', 'supine-to-sit']],
-  [/走|散步|市場|出門|公園|逛|旅遊|搭車/, ['forward-walking-line', 'walking-program', 'sit-to-stand']], [/樓梯|上樓|爬/, ['step-up', 'stair-descent-practice']],
-  [/煮|菜|廚|料理/, ['kitchen-task-sequence', 'counter-reaching-standing']], [/洗衣|晾|摺|掃|整理|家務/, ['cloth-folding', 'laundry-basket-lift']],
+  [/走|散步|市場|出門|公園|逛|旅遊|搭車/, ['forward-walking-line', 'walking-program', 'sit-to-stand', 'outdoor-walk']], [/樓梯|上樓|爬/, ['stairs-handrail', 'step-up']],
+  [/煮|菜|廚|料理/, ['kitchen-task-sequence', 'counter-reaching-standing']], [/洗衣|晾|摺|掃|整理|家務/, ['cloth-folding', 'laundry-basket-lift', 'sweeping']], [/電話|手機|聯絡/, ['phone-dial']], [/錢|買|購物|市場/, ['money-change']], [/記|忘|日期|吃藥/, ['calendar-memo']], [/嗆|吞/, ['swallow-chin-tuck', 'oral_exercise']],
   [/拜拜|廟|教會|朋友|麻將|聚會|聊天/, [], ['社交團體']], [/唱歌|音樂/, [], ['音樂團體']], [/書法|畫|手工|編織/, ['peg-transfer', 'grip-towel'], ['藝術團體', '手工藝團體']], [/種|園藝|花/, ['grip-towel'], ['園藝團體']],
 ];
 const copmRows = a => (a?.copm || []).filter(x => x.activity && String(x.activity).trim());
@@ -88,7 +88,8 @@ const copmAvg = (a, k) => { const v = copmRows(a).map(x => x[k]).filter(x => x !
 const SEATED_ALT = { 'single-leg-stance-supported':'seated-lateral-weight-shift', 'tandem-stance':'seated-forward-reach', 'standing-weight-shift':'seated-lateral-weight-shift',
   'forward-walking-line':'wc_propel', 'walking-program':'seated-arm-swing', 'heel-raise':'seated-heel-raise', 'hip-abduction-standing':'seated-band-abduction',
   'step-up':'long-arc-quad', 'stair-descent-practice':'seated-ball-squeeze', 'shower-step-entry':null, 'adl_walkmeal':'wc_propel',
-  'kitchen-task-sequence':'seated-forward-reach', 'counter-reaching-standing':'seated-cross-body-reach', 'laundry-basket-lift':'cloth-folding' };
+  'kitchen-task-sequence':'seated-forward-reach', 'counter-reaching-standing':'seated-cross-body-reach', 'laundry-basket-lift':'cloth-folding',
+  'sit-to-stand':'wc-armrest-sit-to-stand', 'mini-squat':'wc-armrest-sit-to-stand', 'table-deep-squat':'wc-armrest-sit-to-stand', 'stairs-handrail':'long-arc-quad', 'sweeping':'cloth-folding', 'outdoor-walk':'wc_propel' };
 function isWheelchairLevel(client, a){ const b = a?.adl || {}, lo = k => b[k] !== '' && b[k] != null && +b[k] <= 5; return /輪椅/.test(client?.aids || '') || lo('mobility') || lo('transfer'); }
 
 /* ---------- 評估結果 → 問題、建議介入、輔具、團體 ---------- */
@@ -96,29 +97,29 @@ const GROUP_TYPES = ['運動團體','認知團體','懷舊團體','社交團體'
 function suggestFromAssessment(a, client){
   const out=[]; if(!a) return out;
   const wc=isWheelchairLevel(client,a);
-  const add=(code,text,ex,dev,grp,ref)=>{ if(out.find(o=>o.code===code)) return; ex=[...new Set((ex||[]).map(e=>wc&&e in SEATED_ALT?SEATED_ALT[e]:e).filter(Boolean))]; if(wc&&code==='transfer') ex.push('wc_brake'); out.push({code,text,ex,dev:dev||[],grp:grp||[],referral:ref||''}); };
+  const add=(code,text,ex,dev,grp,ref)=>{ if(out.find(o=>o.code===code)) return; ex=[...new Set((ex||[]).map(e=>wc&&e in SEATED_ALT?SEATED_ALT[e]:e).filter(Boolean))]; if(wc&&code==='transfer') ex.push('wc_brake'); if(wc&&code==='mobility') ex.push('wc-pushup-relief','wc-side-lean-relief'); /* 坐輪椅：加上減壓練習 */ out.push({code,text,ex,dev:dev||[],grp:grp||[],referral:ref||''}); };
   copmRows(a).slice().sort((x,y)=>(+y.imp||0)-(+x.imp||0)).forEach((c,ix)=>{ const ex=[],grp=[]; COPM_KW.forEach(([re,e,g])=>{ if(re.test(c.activity)){ ex.push(...e); grp.push(...(g||[])); } });
     add('copm'+ix,'最想做到：'+c.activity+(c.perf!==''&&c.perf!=null?`（目前表現 ${c.perf}/10）`:''),[...new Set(ex)],[],[...new Set(grp)]); });
   const b=a.adl||{}, has=k=>b[k]!==''&&b[k]!=null;
   if(has('transfer')&&+b.transfer<15) add('transfer','移位能力受限（巴氏移位 '+b.transfer+' 分）',['sit-to-stand','sit-pivot-transfer'],['移位腰帶與人力移位吊帶','移位滑板','床邊扶手與起身拉繩']);
   if(has('mobility')&&+b.mobility<15) add('mobility','平地行走能力受限（巴氏走動 '+b.mobility+' 分）',['forward-walking-line','standing-weight-shift','adl_walkmeal'],+b.mobility<=5?['手動輪椅（一般型）','前輪助行器']:['四腳拐','前輪助行器','四輪助步車'],['運動團體']);
-  if(has('stairs')&&+b.stairs<10) add('stairs','上下樓梯能力受限',['step-up','stair-descent-practice'],['固定式扶手']);
+  if(has('stairs')&&+b.stairs<10) add('stairs','上下樓梯能力受限',['stairs-handrail','step-up','stair-descent-practice'],['固定式扶手']);
   if(has('toilet')&&+b.toilet<10) add('toilet','如廁需協助',['toilet-transfer','adl_toilet'],['馬桶增高器','馬桶扶手架']);
-  if(has('bathing')&&+b.bathing<5) add('bath','洗澡需協助',['shower-step-entry'],['洗澡椅','長柄沐浴刷','防滑措施']);
-  if(has('dressing')&&+b.dressing<10) add('dressing','穿脫衣需協助',['adl_dress','button-board','zipper-practice','sock-aid-practice'],['穿襪輔助器','長柄鞋拔','扣鈕器與拉鍊環','易穿脫衣物']);
+  if(has('bathing')&&+b.bathing<5) add('bath','洗澡需協助',['shower-chair-transfer','shower-step-entry'],['洗澡椅','長柄沐浴刷','防滑措施']);
+  if(has('dressing')&&+b.dressing<10) add('dressing','穿脫衣需協助',['adl_dress','button-board','shoe-donning','zipper-practice','sock-aid-practice'],['穿襪輔助器','長柄鞋拔','扣鈕器與拉鍊環','易穿脫衣物']);
   if(has('feeding')&&+b.feeding<10) add('feeding','進食需協助',['adl_feed','spoon-scoop','cup-to-mouth','oral_exercise'],['加粗握柄餐具','防滑餐墊','斜底碗與護緣盤','缺口杯']);
   if(has('grooming')&&+b.grooming<5) add('grooming','個人衛生需協助',['adl_groom','reaching-cup']);
   if((has('bladder')&&+b.bladder<10)||(has('bowel')&&+b.bowel<10)) add('contin','排泄控制問題',['adl_toiletschedule'],['便盆椅','床上便盆與尿壺'],[],'護理人員評估排泄問題');
   const p=a.phy||{}, ag=client?ageAt(client.birth,a.date):null, v=k=>p[k]!==''&&p[k]!=null;
   if((v('tug')&&+p.tug>=PHY_CUT.tug)||(v('oneLeg')&&+p.oneLeg<PHY_CUT.oneLeg)||(v('tandem')&&+p.tandem<PHY_CUT.tandem)) add('fall','跌倒高風險（TUG／單腳站／前後腳站未達標）',['single-leg-stance-supported','tandem-stance','standing-weight-shift','sit-to-stand'],['防滑措施','感應夜燈與大面板開關','髖部保護褲'],['運動團體']);
   if((v('cs30')&&ag&&+p.cs30<cs30Cut(ag,client.gender))||(v('cs5')&&+p.cs5>=PHY_CUT.cs5)) add('legstr','下肢肌力不足（坐站測試低於同齡常模）',['sit-to-stand','long-arc-quad','heel-raise','hip-abduction-standing'],[],['運動團體']);
-  if(v('grip')&&client&&+p.grip<(client.gender==='男'?PHY_CUT.gripM:PHY_CUT.gripF)) add('grip','握力不足（AWGS 肌少症切點以下）',['grip-towel','pinch-clip','theraband-row'],[],['手工藝團體'],'營養評估（蛋白質攝取）');
+  if(v('grip')&&client&&+p.grip<(client.gender==='男'?PHY_CUT.gripM:PHY_CUT.gripF)) add('grip','握力不足（AWGS 肌少症切點以下）',['grip-towel','towel-wring','jar-key','pinch-clip','seated-chest-press'],[],['手工藝團體'],'營養評估（蛋白質攝取）');
   if(v('gait4')&&+p.gait4>0&&4/(+p.gait4)<PHY_CUT.gait) add('gait','步行速度慢（<1.0 m/s）',['walking-program','forward-walking-line']);
   const i=a.iadl||{}, iz=k=>i[k]!==''&&i[k]!=null&&IADL.find(x=>x.k===k).opts[+i[k]]?.[1]===0;
   if(iz('meds')) add('meds','服藥管理需協助',['iadl_meds']);
   if(iz('cooking')) add('cook','備餐能力下降',['kitchen-task-sequence','counter-reaching-standing']);
-  if(iz('housework')||iz('laundry')) add('house','家務能力下降',['cloth-folding','laundry-basket-lift']);
-  const sp=scoreSPMSQ(a); if(sp&&sp.adj>=3) add('cog','認知功能退化（SPMSQ：'+spmsqLevel(sp.adj)+'）',['cog_ro'],sp.adj>=5?['防走失定位裝置']:[],['認知團體','懷舊團體'], sp.adj>=5&&!client?.dementia?'建議就醫確認失智症診斷':'');
+  if(iz('housework')||iz('laundry')) add('house','家務能力下降',['cloth-folding','laundry-basket-lift','sweeping']);
+  const sp=scoreSPMSQ(a); if(sp&&sp.adj>=3) add('cog','認知功能退化（SPMSQ：'+spmsqLevel(sp.adj)+'）',['cog_ro','calendar-memo','money-change'],sp.adj>=5?['防走失定位裝置']:[],['認知團體','懷舊團體'], sp.adj>=5&&!client?.dementia?'建議就醫確認失智症診斷':'');
   if(a.pain&&+a.pain.nrs>=4) add('pain','疼痛影響活動（NRS '+a.pain.nrs+'）',['seated-posture-reset','upper-trap-stretch'],[],[],'醫師／物理治療師評估疼痛');
   return out;
 }
